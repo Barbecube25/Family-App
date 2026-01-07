@@ -1,64 +1,15 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="de">
-<head>
-    <meta charset="UTF-8">
-    <title>Icon Generator</title>
-    <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #f0f4f8; color: #1e293b; }
-        .card { background: white; padding: 2rem; border-radius: 1rem; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); text-align: center; }
-        button { background: #4f46e5; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 0.5rem; margin: 0.5rem; cursor: pointer; font-size: 1rem; transition: background 0.2s; }
-        button:hover { background: #4338ca; }
-        canvas { display: none; }
-        svg { width: 128px; height: 128px; margin-bottom: 1rem; border-radius: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
-    </style>
-</head>
-<body>
-    <div class="card">
-        <h2>App Icons erstellen</h2>
-        <p>Klicke auf die Buttons, um die PNGs für deine PWA herunterzuladen.</p>
-        
-        <!-- Vorschau des Icons -->
-        <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-                <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse"><stop stop-color="#6366f1"/><stop offset="1" stop-color="#4338ca"/></linearGradient>
-            </defs>
-            <rect width="512" height="512" rx="120" fill="url(#bg)"/>
-            <path d="M256 140L150 240V380H210V300H302V380H362V240L256 140Z" fill="white"/>
-            <path d="M130 240L256 120L382 240" stroke="white" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-
-        <div>
-            <button onclick="downloadIcon(192)">Download icon-192.png</button>
-            <button onclick="downloadIcon(512)">Download icon-512.png</button>
-        </div>
-        <p style="margin-top: 1rem; font-size: 0.875rem; color: #64748b;">Lege die Dateien in deinen <code>public</code> Ordner.</p>
-    </div>
-
-    <script>
-        function downloadIcon(size) {
-            const svgString = document.querySelector('svg').outerHTML;
-            const img = new Image();
-            const canvas = document.createElement('canvas');
-            canvas.width = size;
-            canvas.height = size;
-            const ctx = canvas.getContext('2d');
-            
-            const svgBlob = new Blob([svgString], {type: 'image/svg+xml;charset=utf-8'});
-            const url = URL.createObjectURL(svgBlob);
-            
-            img.onload = function() {
-                ctx.drawImage(img, 0, 0, size, size);
-                const pngUrl = canvas.toDataURL('image/png');
-                const downloadLink = document.createElement('a');
-                downloadLink.href = pngUrl;
-                downloadLink.download = `icon-${size}.png`;
-                document.body.appendChild(downloadLink);
-                downloadLink.click();
-                document.body.removeChild(downloadLink);
-                URL.revokeObjectURL(url);
-            };
-            img.src = url;
-        }
-    </script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Familien Planer</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#f0f4f8">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>
