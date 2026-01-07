@@ -7,7 +7,7 @@ import {
   Store, Edit2, ShoppingBag, Settings
 } from 'lucide-react';
 
-// --- Initial Data ---
+// --- Mock Data & Utilities ---
 
 const INITIAL_SHOPPING_LISTS = [
   { 
@@ -60,8 +60,6 @@ const TRASH_SCHEDULE = [
   { type: 'Gelber Sack', color: 'bg-yellow-500', date: 'Do, 02.11.' },
 ];
 
-// --- Utilities ---
-
 const getDailySummary = (offset) => {
   const days = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
   const months = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
@@ -89,9 +87,11 @@ const getDailySummary = (offset) => {
   return { dayName, dateString, summary, weather };
 };
 
+// Helper to resolve Store Metadata (Logo or Fallback Style)
 const getStoreMeta = (name) => {
   const n = name.toLowerCase();
   
+  // 1. Check for specific domains to fetch logos
   const logoMap = {
     'rewe': 'rewe.de',
     'aldi': 'aldi-sued.de',
@@ -123,10 +123,12 @@ const getStoreMeta = (name) => {
     }
   }
 
+  // 2. Specific manual styles for non-logo items
   if (n.includes('allgemein')) {
     return { type: 'icon', bg: 'bg-gray-800', text: 'text-white', content: <ShoppingBag size={24}/> };
   }
 
+  // 3. Default Fallback
   return { 
     type: 'letter', 
     bg: 'bg-indigo-100', 
@@ -135,8 +137,7 @@ const getStoreMeta = (name) => {
   };
 };
 
-// --- Components ---
-
+// Component to render the Logo or the Fallback safely
 const StoreIcon = ({ name, className, size = "w-12 h-12" }) => {
   const meta = getStoreMeta(name);
   const [error, setError] = useState(false);
@@ -152,6 +153,7 @@ const StoreIcon = ({ name, className, size = "w-12 h-12" }) => {
     );
   }
 
+  // Fallback if no logo or error
   const bgColor = meta.bg || 'bg-indigo-100';
   const textColor = meta.text || 'text-indigo-600';
   const content = error ? meta.fallbackLetter : meta.content;
@@ -162,6 +164,9 @@ const StoreIcon = ({ name, className, size = "w-12 h-12" }) => {
     </div>
   );
 };
+
+
+// --- Components ---
 
 const Header = ({ title, onBack, rightAction }) => (
   <div className="flex items-center justify-between p-4 pb-2">
@@ -307,6 +312,7 @@ const ShoppingView = ({ onBack }) => {
     <div className="animate-fade-in flex flex-col h-full bg-gray-50 min-h-screen">
       <Header title="Einkaufen" onBack={onBack} />
       
+      {/* 1. Horizontal Scrollable Tile List (Square Tiles with Logos) */}
       <div className="px-4 pb-2">
         <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar snap-x">
           {lists.map(list => {
@@ -337,6 +343,7 @@ const ShoppingView = ({ onBack }) => {
                     {list.name}
                  </div>
 
+                 {/* Active background effect for non-logo tiles if needed, kept simple white for logos */}
                  {isActive && (
                     <div className="absolute inset-0 bg-gradient-to-b from-transparent to-indigo-50/50 pointer-events-none"></div>
                  )}
@@ -362,6 +369,7 @@ const ShoppingView = ({ onBack }) => {
         </div>
       </div>
 
+      {/* 2. List Content Area */}
       <div className="flex-1 bg-white rounded-t-[2.5rem] shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative z-20 mt-2">
         
         <div className="p-6 pb-2 flex items-center justify-between">
