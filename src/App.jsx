@@ -88,10 +88,17 @@ const getDailySummary = (offset) => {
 };
 
 // Brandfetch CDN client ID for store logos
-const BRANDFETCH_KEY = import.meta.env.VITE_BRANDFETCH_KEY;
+const BRANDFETCH_KEY = (import.meta.env.VITE_BRANDFETCH_KEY || '').trim();
 const BRANDFETCH_SEARCH_TIMEOUT_MS = 4000;
+if (!BRANDFETCH_KEY) {
+  console.warn(
+    '[Brandfetch] VITE_BRANDFETCH_KEY fehlt oder ist ungültig. Bitte Dev-Server neu starten, .env-Format prüfen (VITE_BRANDFETCH_KEY=<key>) und ggf. Adblocker/Tracking-Schutz für localhost deaktivieren.'
+  );
+}
 const brandfetchUrl = (domain) =>
-  `https://cdn.brandfetch.io/${domain}/w/400/h/400?c=${BRANDFETCH_KEY}`;
+  BRANDFETCH_KEY && domain
+    ? `https://cdn.brandfetch.io/${domain}/w/400/h/400?c=${BRANDFETCH_KEY}`
+    : null;
 
 const searchBrandDomain = async (identifier) => {
   const query = identifier.trim();
@@ -212,7 +219,7 @@ const StoreIcon = ({ name, brandDomain, className, size = "w-12 h-12" }) => {
   }, [name, brandDomain]);
 
   if (meta.type === 'logo') {
-    const logoSources = [meta.src, meta.localSrc];
+    const logoSources = [meta.src, meta.localSrc].filter(Boolean);
     const src = logoSources[attempt];
     if (src) {
       return (
