@@ -146,6 +146,10 @@ const StoreIcon = ({ name, className, size = "w-12 h-12" }) => {
   const meta = getStoreMeta(name);
   const [error, setError] = useState(false);
 
+  useEffect(() => {
+    setError(false);
+  }, [name]);
+
   if (meta.type === 'logo' && !error) {
     return (
       <img 
