@@ -90,34 +90,54 @@ const getDailySummary = (offset) => {
 // Helper to resolve Store Metadata (Logo or Fallback Style)
 const getStoreMeta = (name) => {
   const n = name.toLowerCase();
-  
-  // 1. Check for locally stored logos, plus brand-specific fallback colors
-  const logoMap = {
-    'rewe':       { file: 'rewe.svg',       bg: 'bg-red-100',    text: 'text-red-600' },
-    'aldi':       { file: 'aldi.svg',       bg: 'bg-blue-100',   text: 'text-blue-700' },
-    'lidl':       { file: 'lidl.svg',       bg: 'bg-yellow-100', text: 'text-blue-700' },
-    'dm':         { file: 'dm.svg',         bg: 'bg-pink-100',   text: 'text-pink-700' },
-    'rossmann':   { file: 'rossmann.svg',   bg: 'bg-red-100',    text: 'text-red-700' },
-    'edeka':      { file: 'edeka.svg',      bg: 'bg-yellow-100', text: 'text-yellow-700' },
-    'kaufland':   { file: 'kaufland.svg',   bg: 'bg-red-100',    text: 'text-red-700' },
-    'netto':      { file: 'netto.svg',      bg: 'bg-yellow-100', text: 'text-yellow-700' },
-    'ikea':       { file: 'ikea.svg',       bg: 'bg-yellow-100', text: 'text-blue-800' },
-    'obi':        { file: 'obi.svg',        bg: 'bg-orange-100', text: 'text-orange-700' },
-    'hornbach':   { file: 'hornbach.svg',   bg: 'bg-orange-100', text: 'text-orange-700' },
-    'bauhaus':    { file: 'bauhaus.svg',    bg: 'bg-red-100',    text: 'text-red-700' },
-    'amazon':     { file: 'amazon.svg',     bg: 'bg-yellow-100', text: 'text-yellow-800' },
-    'zara':       { file: 'zara.svg',       bg: 'bg-gray-100',   text: 'text-gray-800' },
-    'h&m':        { file: 'hm.svg',         bg: 'bg-red-100',    text: 'text-red-700' },
-    'douglas':    { file: 'douglas.svg',    bg: 'bg-purple-100', text: 'text-purple-700' },
-    'mediamarkt': { file: 'mediamarkt.svg', bg: 'bg-red-100',    text: 'text-red-700' },
-    'saturn':     { file: 'saturn.svg',     bg: 'bg-blue-100',   text: 'text-blue-700' },
+  // Normalize umlauts for matching (e.g. "Müller" → "muller")
+  const nNorm = n.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss');
+
+  // 1. Specific manual styles for non-logo items
+  if (n.includes('allgemein')) {
+    return { type: 'icon', bg: 'bg-gray-800', text: 'text-white', content: <ShoppingBag size={24}/> };
+  }
+
+  // 2. Known stores – precise domain for real logo + local brand SVG as offline fallback
+  const domainMap = {
+    'rewe':       { domain: 'rewe.de',           file: 'rewe.svg',       bg: 'bg-red-100',    text: 'text-red-600' },
+    'aldi':       { domain: 'aldi-sued.de',       file: 'aldi.svg',       bg: 'bg-blue-100',   text: 'text-blue-700' },
+    'lidl':       { domain: 'lidl.de',            file: 'lidl.svg',       bg: 'bg-yellow-100', text: 'text-blue-700' },
+    'dm':         { domain: 'dm.de',              file: 'dm.svg',         bg: 'bg-pink-100',   text: 'text-pink-700' },
+    'rossmann':   { domain: 'rossmann.de',        file: 'rossmann.svg',   bg: 'bg-red-100',    text: 'text-red-700' },
+    'edeka':      { domain: 'edeka.de',           file: 'edeka.svg',      bg: 'bg-yellow-100', text: 'text-yellow-700' },
+    'kaufland':   { domain: 'kaufland.de',        file: 'kaufland.svg',   bg: 'bg-red-100',    text: 'text-red-700' },
+    'netto':      { domain: 'netto-online.de',    file: 'netto.svg',      bg: 'bg-yellow-100', text: 'text-yellow-700' },
+    'ikea':       { domain: 'ikea.com',           file: 'ikea.svg',       bg: 'bg-yellow-100', text: 'text-blue-800' },
+    'obi':        { domain: 'obi.de',             file: 'obi.svg',        bg: 'bg-orange-100', text: 'text-orange-700' },
+    'hornbach':   { domain: 'hornbach.de',        file: 'hornbach.svg',   bg: 'bg-orange-100', text: 'text-orange-700' },
+    'bauhaus':    { domain: 'bauhaus.info',       file: 'bauhaus.svg',    bg: 'bg-red-100',    text: 'text-red-700' },
+    'amazon':     { domain: 'amazon.de',          file: 'amazon.svg',     bg: 'bg-yellow-100', text: 'text-yellow-800' },
+    'zara':       { domain: 'zara.com',           file: 'zara.svg',       bg: 'bg-gray-100',   text: 'text-gray-800' },
+    'h&m':        { domain: 'hm.com',             file: 'hm.svg',         bg: 'bg-red-100',    text: 'text-red-700' },
+    'douglas':    { domain: 'douglas.de',         file: 'douglas.svg',    bg: 'bg-purple-100', text: 'text-purple-700' },
+    'mediamarkt': { domain: 'mediamarkt.de',      file: 'mediamarkt.svg', bg: 'bg-red-100',    text: 'text-red-700' },
+    'saturn':     { domain: 'saturn.de',          file: 'saturn.svg',     bg: 'bg-blue-100',   text: 'text-blue-700' },
+    'penny':      { domain: 'penny.de',           file: 'penny.svg',      bg: 'bg-red-100',    text: 'text-red-700' },
+    'norma':      { domain: 'norma-online.de',    file: 'norma.svg',      bg: 'bg-red-100',    text: 'text-red-700' },
+    'action':     { domain: 'action.com',         file: 'action.svg',     bg: 'bg-red-100',    text: 'text-red-700' },
+    'tedi':       { domain: 'tedi.eu',            file: 'tedi.svg',       bg: 'bg-blue-100',   text: 'text-blue-700' },
+    'muller':     { domain: 'muellerltd.de',      file: 'mueller.svg',    bg: 'bg-purple-100', text: 'text-purple-700' },
+    'metro':      { domain: 'metro.de',           file: 'metro.svg',      bg: 'bg-blue-100',   text: 'text-blue-700' },
+    'apple':      { domain: 'apple.com',          file: 'apple.svg',      bg: 'bg-gray-100',   text: 'text-gray-800' },
+    'nike':       { domain: 'nike.com',           file: 'nike.svg',       bg: 'bg-gray-100',   text: 'text-gray-800' },
+    'adidas':     { domain: 'adidas.de',          file: 'adidas.svg',     bg: 'bg-gray-100',   text: 'text-gray-800' },
+    'zalando':    { domain: 'zalando.de',         file: 'zalando.svg',    bg: 'bg-orange-100', text: 'text-orange-700' },
+    'otto':       { domain: 'otto.de',            file: 'otto.svg',       bg: 'bg-red-100',    text: 'text-red-700' },
+    'deichmann':  { domain: 'deichmann.com',      file: 'deichmann.svg',  bg: 'bg-red-100',    text: 'text-red-700' },
   };
 
-  for (const [key, meta] of Object.entries(logoMap)) {
-    if (n.includes(key)) {
-      return { 
+  for (const [key, meta] of Object.entries(domainMap)) {
+    if (nNorm.includes(key) || n.includes(key)) {
+      return {
         type: 'logo',
-        src: `/logos/${meta.file}`,
+        src: `https://logo.clearbit.com/${meta.domain}`,
+        localSrc: `/logos/${meta.file}`,
         fallbackLetter: name.charAt(0).toUpperCase(),
         bg: meta.bg,
         text: meta.text,
@@ -125,14 +145,14 @@ const getStoreMeta = (name) => {
     }
   }
 
-  // 2. Specific manual styles for non-logo items
-  if (n.includes('allgemein')) {
-    return { type: 'icon', bg: 'bg-gray-800', text: 'text-white', content: <ShoppingBag size={24}/> };
-  }
+  // 3. Newly created / unknown stores – auto-guess domain and try logo service
+  const guessedDomain = nNorm
+    .replace(/[^a-z0-9\s]/g, '').trim()
+    .split(/\s+/)[0] + '.de';
 
-  // 3. Fallback for unknown stores – show initial letter
   return {
-    type: 'fallback',
+    type: 'logo',
+    src: `https://logo.clearbit.com/${guessedDomain}`,
     fallbackLetter: name.charAt(0).toUpperCase(),
     bg: 'bg-indigo-100',
     text: 'text-indigo-600',
@@ -142,27 +162,39 @@ const getStoreMeta = (name) => {
 // Component to render the Logo or the Fallback safely
 const StoreIcon = ({ name, className, size = "w-12 h-12" }) => {
   const meta = getStoreMeta(name);
-  const [error, setError] = useState(false);
+  // attempt: 0 = try Clearbit, 1 = try local SVG, 2 = show letter
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    setError(false);
+    setAttempt(0);
   }, [name]);
 
-  if (meta.type === 'logo' && !error) {
+  if (meta.type === 'logo' && attempt === 0) {
     return (
-      <img 
-        src={meta.src} 
-        alt={name} 
-        className={`${size} ${className} object-contain rounded-xl bg-white`} 
-        onError={() => setError(true)}
+      <img
+        src={meta.src}
+        alt={name}
+        className={`${size} ${className} object-contain rounded-xl bg-white p-1`}
+        onError={() => setAttempt(meta.localSrc ? 1 : 2)}
       />
     );
   }
 
-  // Fallback if no logo or error
+  if (meta.type === 'logo' && attempt === 1 && meta.localSrc) {
+    return (
+      <img
+        src={meta.localSrc}
+        alt={name}
+        className={`${size} ${className} object-contain rounded-xl bg-white p-1`}
+        onError={() => setAttempt(2)}
+      />
+    );
+  }
+
+  // Letter / icon fallback
   const bgColor = meta.bg || 'bg-indigo-100';
   const textColor = meta.text || 'text-indigo-600';
-  const content = (meta.type === 'fallback' || (meta.type === 'logo' && error)) ? meta.fallbackLetter : meta.content;
+  const content = meta.type === 'icon' ? meta.content : meta.fallbackLetter;
 
   return (
     <div className={`${size} ${className} flex items-center justify-center font-bold text-xl rounded-2xl ${bgColor} ${textColor}`}>

@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <rect width="100" height="100" rx="12" fill="#cc0000"/>
-  <text x="50" y="47" font-family="Arial,Helvetica,sans-serif" font-size="15" font-weight="bold" fill="white" text-anchor="middle">ROSS-</text>
-  <text x="50" y="67" font-family="Arial,Helvetica,sans-serif" font-size="15" font-weight="bold" fill="white" text-anchor="middle">MANN</text>
+  <rect width="100" height="100" rx="10" fill="#e30613"/>
+  <text x="50" y="45" font-family="Arial,sans-serif" font-size="14" font-weight="bold" fill="white" text-anchor="middle">Ihr</text>
+  <text x="50" y="62" font-family="Arial Black,Arial,sans-serif" font-size="16" font-weight="900" fill="white" text-anchor="middle">Rossmann</text>
 </svg>
