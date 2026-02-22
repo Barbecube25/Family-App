@@ -89,6 +89,7 @@ const getDailySummary = (offset) => {
 
 // Brandfetch CDN client ID for store logos
 const BRANDFETCH_KEY = import.meta.env.VITE_BRANDFETCH_KEY;
+const BRANDFETCH_SEARCH_TIMEOUT_MS = 4000;
 const brandfetchUrl = (domain) =>
   `https://cdn.brandfetch.io/${domain}/w/400/h/400?c=${BRANDFETCH_KEY}`;
 
@@ -96,19 +97,25 @@ const searchBrandDomain = async (identifier) => {
   const query = identifier.trim();
   if (!query || !BRANDFETCH_KEY) return null;
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), BRANDFETCH_SEARCH_TIMEOUT_MS);
+
   try {
     const response = await fetch(
       `https://api.brandfetch.io/v2/search/${encodeURIComponent(query)}?c=${encodeURIComponent(BRANDFETCH_KEY)}`,
-      { method: 'GET' }
+      { method: 'GET', signal: controller.signal }
     );
     if (!response.ok) return null;
     const data = await response.json();
-    const brand = Array.isArray(data)
-      ? data[0]
-      : data?.brand || data?.results?.[0] || data?.brands?.[0] || data?.data?.[0];
-    return typeof brand?.domain === 'string' ? brand.domain : null;
+    const candidates = Array.isArray(data)
+      ? data
+      : [data?.brand, data?.results?.[0], data?.brands?.[0], data?.data?.[0]];
+    const brandWithDomain = candidates.find((candidate) => typeof candidate?.domain === 'string');
+    return brandWithDomain?.domain ?? null;
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 };
 
