@@ -91,34 +91,36 @@ const getDailySummary = (offset) => {
 const getStoreMeta = (name) => {
   const n = name.toLowerCase();
   
-  // 1. Check for specific domains to fetch logos
+  // 1. Check for specific domains to fetch logos, plus brand-specific fallback colors
   const logoMap = {
-    'rewe': 'rewe.de',
-    'aldi': 'aldi-sued.de',
-    'lidl': 'lidl.de',
-    'dm': 'dm.de',
-    'rossmann': 'rossmann.de',
-    'edeka': 'edeka.de',
-    'kaufland': 'kaufland.de',
-    'netto': 'netto-online.de',
-    'ikea': 'ikea.com',
-    'obi': 'obi.de',
-    'hornbach': 'hornbach.de',
-    'bauhaus': 'bauhaus.info',
-    'amazon': 'amazon.de',
-    'zara': 'zara.com',
-    'h&m': 'hm.com',
-    'douglas': 'douglas.de',
-    'mediamarkt': 'mediamarkt.de',
-    'saturn': 'saturn.de'
+    'rewe':       { domain: 'rewe.de',          bg: 'bg-red-100',    text: 'text-red-600' },
+    'aldi':       { domain: 'aldi-sued.de',      bg: 'bg-blue-100',   text: 'text-blue-700' },
+    'lidl':       { domain: 'lidl.de',           bg: 'bg-yellow-100', text: 'text-blue-700' },
+    'dm':         { domain: 'dm.de',             bg: 'bg-pink-100',   text: 'text-pink-700' },
+    'rossmann':   { domain: 'rossmann.de',       bg: 'bg-red-100',    text: 'text-red-700' },
+    'edeka':      { domain: 'edeka.de',          bg: 'bg-yellow-100', text: 'text-yellow-700' },
+    'kaufland':   { domain: 'kaufland.de',       bg: 'bg-red-100',    text: 'text-red-700' },
+    'netto':      { domain: 'netto-online.de',   bg: 'bg-yellow-100', text: 'text-yellow-700' },
+    'ikea':       { domain: 'ikea.com',          bg: 'bg-yellow-100', text: 'text-blue-800' },
+    'obi':        { domain: 'obi.de',            bg: 'bg-orange-100', text: 'text-orange-700' },
+    'hornbach':   { domain: 'hornbach.de',       bg: 'bg-orange-100', text: 'text-orange-700' },
+    'bauhaus':    { domain: 'bauhaus.info',      bg: 'bg-red-100',    text: 'text-red-700' },
+    'amazon':     { domain: 'amazon.de',         bg: 'bg-yellow-100', text: 'text-yellow-800' },
+    'zara':       { domain: 'zara.com',          bg: 'bg-gray-100',   text: 'text-gray-800' },
+    'h&m':        { domain: 'hm.com',            bg: 'bg-red-100',    text: 'text-red-700' },
+    'douglas':    { domain: 'douglas.de',        bg: 'bg-purple-100', text: 'text-purple-700' },
+    'mediamarkt': { domain: 'mediamarkt.de',     bg: 'bg-red-100',    text: 'text-red-700' },
+    'saturn':     { domain: 'saturn.de',         bg: 'bg-blue-100',   text: 'text-blue-700' },
   };
 
-  for (const [key, domain] of Object.entries(logoMap)) {
+  for (const [key, meta] of Object.entries(logoMap)) {
     if (n.includes(key)) {
       return { 
         type: 'logo',
-        src: `https://logo.clearbit.com/${domain}`,
-        fallbackLetter: name.charAt(0).toUpperCase()
+        src: `https://logo.clearbit.com/${meta.domain}`,
+        fallbackLetter: name.charAt(0).toUpperCase(),
+        bg: meta.bg,
+        text: meta.text,
       };
     }
   }
@@ -156,7 +158,7 @@ const StoreIcon = ({ name, className, size = "w-12 h-12" }) => {
   // Fallback if no logo or error
   const bgColor = meta.bg || 'bg-indigo-100';
   const textColor = meta.text || 'text-indigo-600';
-  const content = error ? meta.fallbackLetter : meta.content;
+  const content = (meta.type === 'logo' && error) ? meta.fallbackLetter : meta.content;
 
   return (
     <div className={`${size} ${className} flex items-center justify-center font-bold text-xl rounded-2xl ${bgColor} ${textColor}`}>
@@ -244,7 +246,13 @@ const ShoppingView = ({ onBack }) => {
   const [newItemInput, setNewItemInput] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newListName, setNewListName] = useState('');
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   
+  const closeCreateModal = () => {
+    setShowCreateModal(false);
+    setNewListName('');
+  };
+
   const addNewList = () => {
     if (!newListName.trim()) return;
     const newList = {
@@ -256,18 +264,20 @@ const ShoppingView = ({ onBack }) => {
     const updatedLists = [...lists, newList];
     setLists(updatedLists);
     setActiveListId(newList.id);
-    setNewListName('');
-    setShowCreateModal(false);
+    closeCreateModal();
   };
 
   const deleteList = (id) => {
-    if (confirm('Liste wirklich löschen?')) {
-      const remaining = lists.filter(l => l.id !== id);
-      setLists(remaining);
-      if (activeListId === id && remaining.length > 0) {
-        setActiveListId(remaining[0].id);
-      }
+    setDeleteConfirmId(id);
+  };
+
+  const confirmDelete = () => {
+    const remaining = lists.filter(l => l.id !== deleteConfirmId);
+    setLists(remaining);
+    if (activeListId === deleteConfirmId && remaining.length > 0) {
+      setActiveListId(remaining[0].id);
     }
+    setDeleteConfirmId(null);
   };
 
   const addItemToList = () => {
@@ -455,28 +465,71 @@ const ShoppingView = ({ onBack }) => {
         <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-20 sm:mb-0">
               <h3 className="text-lg font-semibold mb-4">Neue Liste erstellen</h3>
+              {newListName.trim() && (
+                <div className="flex items-center gap-3 mb-4 p-3 bg-gray-50 rounded-2xl">
+                  <StoreIcon name={newListName.trim()} size="w-12 h-12" />
+                  <div>
+                    <div className="font-medium text-gray-800">{newListName.trim()}</div>
+                    <div className="text-xs text-gray-400">Vorschau</div>
+                  </div>
+                </div>
+              )}
               <input 
                 value={newListName}
                 onChange={(e) => setNewListName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addNewList()}
                 placeholder="Name (z.B. Ikea, Baumarkt)"
                 className="w-full bg-gray-100 px-4 py-3 rounded-xl outline-none mb-4 focus:ring-2 focus:ring-indigo-500"
                 autoFocus
               />
               <div className="flex gap-3">
                  <button 
-                   onClick={() => setShowCreateModal(false)}
+                   onClick={closeCreateModal}
                    className="flex-1 py-3 text-gray-500 hover:bg-gray-100 rounded-xl font-medium"
                  >
                    Abbrechen
                  </button>
                  <button 
                    onClick={addNewList}
-                   className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-medium shadow-lg shadow-indigo-200"
+                   disabled={!newListName.trim()}
+                   className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-medium shadow-lg shadow-indigo-200 disabled:opacity-40 disabled:shadow-none"
                  >
                    Erstellen
                  </button>
               </div>
            </div>
+        </div>
+      )}
+
+      {deleteConfirmId && (
+        <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-20 sm:mb-0">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center">
+                <Trash2 size={22} className="text-red-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">Liste löschen?</h3>
+                <p className="text-sm text-gray-500">
+                  &bdquo;{lists.find(l => l.id === deleteConfirmId)?.name}&ldquo; wird dauerhaft entfernt.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                className="flex-1 py-3 text-gray-500 hover:bg-gray-100 rounded-xl font-medium"
+              >
+                Abbrechen
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="flex-1 py-3 bg-red-500 text-white rounded-xl font-medium shadow-lg shadow-red-200"
+              >
+                Löschen
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
