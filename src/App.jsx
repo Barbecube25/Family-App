@@ -130,12 +130,14 @@ const getStoreMeta = (name) => {
     return { type: 'icon', bg: 'bg-gray-800', text: 'text-white', content: <ShoppingBag size={24}/> };
   }
 
-  // 3. Default Fallback
-  return { 
-    type: 'letter', 
-    bg: 'bg-indigo-100', 
-    text: 'text-indigo-600', 
-    content: name.substring(0,2).toUpperCase() 
+  // 3. For any unknown store, try to auto-fetch its logo via Clearbit using the guessed domain
+  const cleanDomain = n.replace(/\s+/g, '').replace(/[^a-z0-9]/g, '');
+  return {
+    type: 'logo',
+    src: `https://logo.clearbit.com/${cleanDomain}.de`,
+    fallbackLetter: name.charAt(0).toUpperCase(),
+    bg: 'bg-indigo-100',
+    text: 'text-indigo-600',
   };
 };
 
