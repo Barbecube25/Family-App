@@ -212,7 +212,8 @@ const StoreIcon = ({ name, brandDomain, className, size = "w-12 h-12" }) => {
   }, [name, brandDomain]);
 
   if (meta.type === 'logo') {
-    const src = attempt === 0 ? meta.src : attempt === 1 ? meta.localSrc : null;
+    const logoSources = [meta.src, meta.localSrc];
+    const src = logoSources[attempt] ?? null;
     if (src) {
       return (
         <img
