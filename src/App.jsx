@@ -91,33 +91,33 @@ const getDailySummary = (offset) => {
 const getStoreMeta = (name) => {
   const n = name.toLowerCase();
   
-  // 1. Check for specific domains to fetch logos, plus brand-specific fallback colors
+  // 1. Check for locally stored logos, plus brand-specific fallback colors
   const logoMap = {
-    'rewe':       { domain: 'rewe.de',          bg: 'bg-red-100',    text: 'text-red-600' },
-    'aldi':       { domain: 'aldi-sued.de',      bg: 'bg-blue-100',   text: 'text-blue-700' },
-    'lidl':       { domain: 'lidl.de',           bg: 'bg-yellow-100', text: 'text-blue-700' },
-    'dm':         { domain: 'dm.de',             bg: 'bg-pink-100',   text: 'text-pink-700' },
-    'rossmann':   { domain: 'rossmann.de',       bg: 'bg-red-100',    text: 'text-red-700' },
-    'edeka':      { domain: 'edeka.de',          bg: 'bg-yellow-100', text: 'text-yellow-700' },
-    'kaufland':   { domain: 'kaufland.de',       bg: 'bg-red-100',    text: 'text-red-700' },
-    'netto':      { domain: 'netto-online.de',   bg: 'bg-yellow-100', text: 'text-yellow-700' },
-    'ikea':       { domain: 'ikea.com',          bg: 'bg-yellow-100', text: 'text-blue-800' },
-    'obi':        { domain: 'obi.de',            bg: 'bg-orange-100', text: 'text-orange-700' },
-    'hornbach':   { domain: 'hornbach.de',       bg: 'bg-orange-100', text: 'text-orange-700' },
-    'bauhaus':    { domain: 'bauhaus.info',      bg: 'bg-red-100',    text: 'text-red-700' },
-    'amazon':     { domain: 'amazon.de',         bg: 'bg-yellow-100', text: 'text-yellow-800' },
-    'zara':       { domain: 'zara.com',          bg: 'bg-gray-100',   text: 'text-gray-800' },
-    'h&m':        { domain: 'hm.com',            bg: 'bg-red-100',    text: 'text-red-700' },
-    'douglas':    { domain: 'douglas.de',        bg: 'bg-purple-100', text: 'text-purple-700' },
-    'mediamarkt': { domain: 'mediamarkt.de',     bg: 'bg-red-100',    text: 'text-red-700' },
-    'saturn':     { domain: 'saturn.de',         bg: 'bg-blue-100',   text: 'text-blue-700' },
+    'rewe':       { file: 'rewe.svg',       bg: 'bg-red-100',    text: 'text-red-600' },
+    'aldi':       { file: 'aldi.svg',       bg: 'bg-blue-100',   text: 'text-blue-700' },
+    'lidl':       { file: 'lidl.svg',       bg: 'bg-yellow-100', text: 'text-blue-700' },
+    'dm':         { file: 'dm.svg',         bg: 'bg-pink-100',   text: 'text-pink-700' },
+    'rossmann':   { file: 'rossmann.svg',   bg: 'bg-red-100',    text: 'text-red-700' },
+    'edeka':      { file: 'edeka.svg',      bg: 'bg-yellow-100', text: 'text-yellow-700' },
+    'kaufland':   { file: 'kaufland.svg',   bg: 'bg-red-100',    text: 'text-red-700' },
+    'netto':      { file: 'netto.svg',      bg: 'bg-yellow-100', text: 'text-yellow-700' },
+    'ikea':       { file: 'ikea.svg',       bg: 'bg-yellow-100', text: 'text-blue-800' },
+    'obi':        { file: 'obi.svg',        bg: 'bg-orange-100', text: 'text-orange-700' },
+    'hornbach':   { file: 'hornbach.svg',   bg: 'bg-orange-100', text: 'text-orange-700' },
+    'bauhaus':    { file: 'bauhaus.svg',    bg: 'bg-red-100',    text: 'text-red-700' },
+    'amazon':     { file: 'amazon.svg',     bg: 'bg-yellow-100', text: 'text-yellow-800' },
+    'zara':       { file: 'zara.svg',       bg: 'bg-gray-100',   text: 'text-gray-800' },
+    'h&m':        { file: 'hm.svg',         bg: 'bg-red-100',    text: 'text-red-700' },
+    'douglas':    { file: 'douglas.svg',    bg: 'bg-purple-100', text: 'text-purple-700' },
+    'mediamarkt': { file: 'mediamarkt.svg', bg: 'bg-red-100',    text: 'text-red-700' },
+    'saturn':     { file: 'saturn.svg',     bg: 'bg-blue-100',   text: 'text-blue-700' },
   };
 
   for (const [key, meta] of Object.entries(logoMap)) {
     if (n.includes(key)) {
       return { 
         type: 'logo',
-        src: `https://logo.clearbit.com/${meta.domain}`,
+        src: `/logos/${meta.file}`,
         fallbackLetter: name.charAt(0).toUpperCase(),
         bg: meta.bg,
         text: meta.text,
@@ -130,11 +130,9 @@ const getStoreMeta = (name) => {
     return { type: 'icon', bg: 'bg-gray-800', text: 'text-white', content: <ShoppingBag size={24}/> };
   }
 
-  // 3. For any unknown store, try to auto-fetch its logo via Clearbit using the guessed domain
-  const cleanDomain = n.replace(/\s+/g, '').replace(/[^a-z0-9]/g, '');
+  // 3. Fallback for unknown stores – show initial letter
   return {
-    type: 'logo',
-    src: `https://logo.clearbit.com/${cleanDomain}.de`,
+    type: 'fallback',
     fallbackLetter: name.charAt(0).toUpperCase(),
     bg: 'bg-indigo-100',
     text: 'text-indigo-600',
@@ -164,7 +162,7 @@ const StoreIcon = ({ name, className, size = "w-12 h-12" }) => {
   // Fallback if no logo or error
   const bgColor = meta.bg || 'bg-indigo-100';
   const textColor = meta.text || 'text-indigo-600';
-  const content = (meta.type === 'logo' && error) ? meta.fallbackLetter : meta.content;
+  const content = (meta.type === 'fallback' || (meta.type === 'logo' && error)) ? meta.fallbackLetter : meta.content;
 
   return (
     <div className={`${size} ${className} flex items-center justify-center font-bold text-xl rounded-2xl ${bgColor} ${textColor}`}>
