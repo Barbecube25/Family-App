@@ -4,7 +4,7 @@ import {
   CloudSun, Trash2, Backpack, FolderOpen, Plus, 
   ArrowLeft, Check, X, MoreVertical, MapPin, Search,
   ChevronLeft, ChevronRight, Sparkles, Sun, Cloud, CloudRain,
-  Store, Edit2, ShoppingBag, Settings
+  Store, Edit2, ShoppingBag, Settings, ArrowRight
 } from 'lucide-react';
 
 // --- Mock Data & Utilities ---
@@ -304,7 +304,8 @@ const ShoppingView = ({ onBack }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
-  
+  const [moveItemState, setMoveItemState] = useState(null); // { id, sourceId }
+
   const closeCreateModal = () => {
     setShowCreateModal(false);
     setNewListName('');
@@ -364,6 +365,29 @@ const ShoppingView = ({ onBack }) => {
       ...list,
       items: list.items.filter(i => i.id !== itemId)
     })));
+  };
+
+  const moveItemToList = (targetListId) => {
+    if (!moveItemState) return;
+    const { id: itemId, sourceId } = moveItemState;
+    let itemToMove = null;
+    const withRemoved = lists.map(list => {
+      if (list.id === sourceId) {
+        const found = list.items.find(i => i.id === itemId);
+        if (found) itemToMove = { text: found.text };
+        return { ...list, items: list.items.filter(i => i.id !== itemId) };
+      }
+      return list;
+    });
+    if (itemToMove) {
+      setLists(withRemoved.map(list => {
+        if (list.id === targetListId) {
+          return { ...list, items: [...list.items, { id: Date.now(), text: itemToMove.text, done: false }] };
+        }
+        return list;
+      }));
+    }
+    setMoveItemState(null);
   };
 
   const activeList = lists.find(l => l.id === activeListId) || lists[0];
@@ -491,6 +515,12 @@ const ShoppingView = ({ onBack }) => {
                        )}
                    </div>
                    
+                   <button
+                     onClick={(e) => { e.stopPropagation(); setMoveItemState({ id: item.id, sourceId: item.sourceId }); }}
+                     className={`p-2 text-gray-300 hover:text-indigo-500 hover:bg-indigo-50 rounded-full transition-all ${item.done ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                   >
+                     <ArrowRight size={18} />
+                   </button>
                    <button 
                      onClick={(e) => deleteItem(e, item.id)}
                      className={`p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all ${item.done ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
@@ -586,6 +616,42 @@ const ShoppingView = ({ onBack }) => {
                 Löschen
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {moveItemState && (
+        <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-20 sm:mb-0">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center">
+                <ArrowRight size={22} className="text-indigo-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">Artikel verschieben</h3>
+                <p className="text-sm text-gray-500 truncate max-w-[200px]">
+                  {lists.find(l => l.id === moveItemState.sourceId)?.items.find(i => i.id === moveItemState.id)?.text}
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2 mb-4">
+              {lists.filter(l => l.id !== 'general' && l.id !== moveItemState.sourceId).map(l => (
+                <button
+                  key={l.id}
+                  onClick={() => moveItemToList(l.id)}
+                  className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-indigo-50 transition-colors text-left"
+                >
+                  <StoreIcon name={l.name} size="w-10 h-10" />
+                  <span className="font-medium text-gray-800">{l.name}</span>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setMoveItemState(null)}
+              className="w-full py-3 text-gray-500 hover:bg-gray-100 rounded-xl font-medium"
+            >
+              Abbrechen
+            </button>
           </div>
         </div>
       )}
