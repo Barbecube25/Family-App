@@ -167,7 +167,7 @@ const getStoreMeta = (name) => {
 // Component to render the Logo or the Fallback safely
 const StoreIcon = ({ name, className, size = "w-12 h-12" }) => {
   const meta = getStoreMeta(name);
-  // attempt: 0 = try Brandfetch, 1 = try local SVG, 2 = show letter
+  // attempt: 0 = try Brandfetch, 1 = show letter
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -180,18 +180,7 @@ const StoreIcon = ({ name, className, size = "w-12 h-12" }) => {
         src={meta.src}
         alt={name}
         className={`${size} ${className} object-contain rounded-xl bg-white p-1`}
-        onError={() => setAttempt(meta.localSrc ? 1 : 2)}
-      />
-    );
-  }
-
-  if (meta.type === 'logo' && attempt === 1 && meta.localSrc) {
-    return (
-      <img
-        src={meta.localSrc}
-        alt={name}
-        className={`${size} ${className} object-contain rounded-xl bg-white p-1`}
-        onError={() => setAttempt(2)}
+        onError={() => setAttempt(1)}
       />
     );
   }
