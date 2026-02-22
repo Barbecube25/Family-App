@@ -93,7 +93,7 @@ const BRANDFETCH_SEARCH_TIMEOUT_MS = 4000;
 if (!BRANDFETCH_KEY) {
   console.info('[Brandfetch] Kein VITE_BRANDFETCH_KEY gesetzt. Nutze Clearbit-Logos als Standard.');
 }
-const brandfetchUrl = (domain) =>
+const getClearbitLogoUrl = (domain) =>
   domain
     ? `https://logo.clearbit.com/${domain}`
     : null;
@@ -138,7 +138,7 @@ const getStoreMeta = (name, resolvedDomain) => {
   if (resolvedDomain) {
     return {
       type: 'logo',
-      src: brandfetchUrl(resolvedDomain),
+      src: getClearbitLogoUrl(resolvedDomain),
       fallbackLetter: name.charAt(0).toUpperCase(),
       bg: 'bg-indigo-100',
       text: 'text-indigo-600',
@@ -183,7 +183,7 @@ const getStoreMeta = (name, resolvedDomain) => {
     if (nNorm.includes(key) || n.includes(key)) {
       return {
         type: 'logo',
-        src: brandfetchUrl(meta.domain),
+        src: getClearbitLogoUrl(meta.domain),
         localSrc: `/logos/${meta.file}`,
         fallbackLetter: name.charAt(0).toUpperCase(),
         bg: meta.bg,
@@ -199,7 +199,7 @@ const getStoreMeta = (name, resolvedDomain) => {
 
   return {
     type: 'logo',
-    src: brandfetchUrl(guessedDomain),
+    src: getClearbitLogoUrl(guessedDomain),
     fallbackLetter: name.charAt(0).toUpperCase(),
     bg: 'bg-indigo-100',
     text: 'text-indigo-600',
