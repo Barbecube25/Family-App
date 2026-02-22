@@ -247,7 +247,23 @@ const DailyOverviewTile = ({ offset, setOffset, onWeatherClick }) => {
 };
 
 const ShoppingView = ({ onBack }) => {
-  const [lists, setLists] = useState(INITIAL_SHOPPING_LISTS);
+  const [lists, setLists] = useState(() => {
+    try {
+      const saved = localStorage.getItem('family_app_shopping_lists');
+      return saved ? JSON.parse(saved) : INITIAL_SHOPPING_LISTS;
+    } catch {
+      return INITIAL_SHOPPING_LISTS;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('family_app_shopping_lists', JSON.stringify(lists));
+    } catch {
+      // storage quota exceeded or unavailable – ignore
+    }
+  }, [lists]);
+
   const [activeListId, setActiveListId] = useState(INITIAL_SHOPPING_LISTS[0].id);
   const [newItemInput, setNewItemInput] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -633,7 +649,22 @@ const CalendarView = ({ onBack }) => (
 );
 
 const TaskView = ({ onBack }) => {
-    const [tasks, setTasks] = useState(INITIAL_TASKS);
+    const [tasks, setTasks] = useState(() => {
+        try {
+            const saved = localStorage.getItem('family_app_tasks');
+            return saved ? JSON.parse(saved) : INITIAL_TASKS;
+        } catch {
+            return INITIAL_TASKS;
+        }
+    });
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('family_app_tasks', JSON.stringify(tasks));
+        } catch {
+            // storage quota exceeded or unavailable – ignore
+        }
+    }, [tasks]);
     
     const toggleTask = (id) => {
         setTasks(tasks.map(t => t.id === id ? {...t, done: !t.done} : t));
