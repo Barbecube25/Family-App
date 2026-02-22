@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect width="100" height="100" rx="12" fill="#0050aa"/>
+  <ellipse cx="50" cy="50" rx="38" ry="38" fill="#ffed00"/>
+  <ellipse cx="50" cy="50" rx="28" ry="28" fill="#0050aa"/>
+  <text x="50" y="56" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="bold" fill="#ffed00" text-anchor="middle">Lidl</text>
+</svg>
