@@ -916,6 +916,28 @@ const DashboardTile = ({ icon: Icon, title, subtitle, color, onClick, span = "co
 export default function App() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [dayOffset, setDayOffset] = useState(0);
+
+  useEffect(() => {
+    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    window.history.replaceState({ view: 'dashboard' }, '', currentUrl);
+    const handlePopState = (event) => {
+      setCurrentView(event.state?.view || 'dashboard');
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (window.history.state?.view === currentView) {
+      return;
+    }
+    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (currentView === 'dashboard') {
+      window.history.replaceState({ view: 'dashboard' }, '', currentUrl);
+      return;
+    }
+    window.history.pushState({ view: currentView }, '', currentUrl);
+  }, [currentView]);
   
   const renderView = () => {
     switch(currentView) {
