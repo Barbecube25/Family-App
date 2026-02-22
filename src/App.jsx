@@ -87,6 +87,11 @@ const getDailySummary = (offset) => {
   return { dayName, dateString, summary, weather };
 };
 
+// Brandfetch CDN client ID for store logos
+const BRANDFETCH_KEY = import.meta.env.VITE_BRANDFETCH_KEY;
+const brandfetchUrl = (domain) =>
+  `https://cdn.brandfetch.io/${domain}/w/400/h/400?c=${BRANDFETCH_KEY}`;
+
 // Helper to resolve Store Metadata (Logo or Fallback Style)
 const getStoreMeta = (name) => {
   const n = name.toLowerCase();
@@ -136,7 +141,7 @@ const getStoreMeta = (name) => {
     if (nNorm.includes(key) || n.includes(key)) {
       return {
         type: 'logo',
-        src: `https://logo.clearbit.com/${meta.domain}`,
+        src: brandfetchUrl(meta.domain),
         localSrc: `/logos/${meta.file}`,
         fallbackLetter: name.charAt(0).toUpperCase(),
         bg: meta.bg,
@@ -152,7 +157,7 @@ const getStoreMeta = (name) => {
 
   return {
     type: 'logo',
-    src: `https://logo.clearbit.com/${guessedDomain}`,
+    src: brandfetchUrl(guessedDomain),
     fallbackLetter: name.charAt(0).toUpperCase(),
     bg: 'bg-indigo-100',
     text: 'text-indigo-600',
@@ -162,7 +167,7 @@ const getStoreMeta = (name) => {
 // Component to render the Logo or the Fallback safely
 const StoreIcon = ({ name, className, size = "w-12 h-12" }) => {
   const meta = getStoreMeta(name);
-  // attempt: 0 = try Clearbit, 1 = try local SVG, 2 = show letter
+  // attempt: 0 = try Brandfetch, 1 = try local SVG, 2 = show letter
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
