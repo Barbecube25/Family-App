@@ -732,7 +732,6 @@ export default function App() {
                 title="Orga"
                 subtitle="Docs & Kontakte"
                 color="bg-purple-400"
-                span="col-span-2"
             />
         </div>
 
