@@ -204,22 +204,26 @@ const getStoreMeta = (name, resolvedDomain) => {
 // Component to render the Logo or the Fallback safely
 const StoreIcon = ({ name, brandDomain, className, size = "w-12 h-12" }) => {
   const meta = getStoreMeta(name, brandDomain);
-  // attempt: 0 = try Brandfetch, 1 = show letter
+  // attempt: 0 = try Brandfetch, 1 = try local logo, 2 = show letter
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     setAttempt(0);
-  }, [name]);
+  }, [name, brandDomain]);
 
-  if (meta.type === 'logo' && attempt === 0) {
-    return (
-      <img
-        src={meta.src}
-        alt={name}
-        className={`${size} ${className} object-contain rounded-xl bg-white p-1`}
-        onError={() => setAttempt(1)}
-      />
-    );
+  if (meta.type === 'logo') {
+    const logoSources = [meta.src, meta.localSrc];
+    const src = logoSources[attempt];
+    if (src) {
+      return (
+        <img
+          src={src}
+          alt={name}
+          className={`${size} ${className} object-contain rounded-xl bg-white p-1`}
+          onError={() => setAttempt((prev) => prev + 1)}
+        />
+      );
+    }
   }
 
   // Letter / icon fallback
