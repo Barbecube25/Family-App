@@ -89,11 +89,38 @@ const getDailySummary = (offset) => {
 
 // Brandfetch CDN client ID for store logos
 const BRANDFETCH_KEY = import.meta.env.VITE_BRANDFETCH_KEY;
+const BRANDFETCH_SEARCH_TIMEOUT_MS = 4000;
 const brandfetchUrl = (domain) =>
   `https://cdn.brandfetch.io/${domain}/w/400/h/400?c=${BRANDFETCH_KEY}`;
 
+const searchBrandDomain = async (identifier) => {
+  const query = identifier.trim();
+  if (!query || !BRANDFETCH_KEY) return null;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), BRANDFETCH_SEARCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(
+      `https://api.brandfetch.io/v2/search/${encodeURIComponent(query)}?c=${encodeURIComponent(BRANDFETCH_KEY)}`,
+      { method: 'GET', signal: controller.signal }
+    );
+    if (!response.ok) return null;
+    const data = await response.json();
+    const candidates = Array.isArray(data)
+      ? data
+      : [data?.brand, data?.results?.[0], data?.brands?.[0], data?.data?.[0]];
+    const brandWithDomain = candidates.find((candidate) => typeof candidate?.domain === 'string');
+    return brandWithDomain?.domain ?? null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
 // Helper to resolve Store Metadata (Logo or Fallback Style)
-const getStoreMeta = (name) => {
+const getStoreMeta = (name, resolvedDomain) => {
   const n = name.toLowerCase();
   // Normalize umlauts for matching (e.g. "Müller" → "muller")
   const nNorm = n.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss');
@@ -101,6 +128,16 @@ const getStoreMeta = (name) => {
   // 1. Specific manual styles for non-logo items
   if (n.includes('allgemein')) {
     return { type: 'icon', bg: 'bg-gray-800', text: 'text-white', content: <ShoppingBag size={24}/> };
+  }
+
+  if (resolvedDomain) {
+    return {
+      type: 'logo',
+      src: brandfetchUrl(resolvedDomain),
+      fallbackLetter: name.charAt(0).toUpperCase(),
+      bg: 'bg-indigo-100',
+      text: 'text-indigo-600',
+    };
   }
 
   // 2. Known stores – precise domain for real logo + local brand SVG as offline fallback
@@ -165,8 +202,8 @@ const getStoreMeta = (name) => {
 };
 
 // Component to render the Logo or the Fallback safely
-const StoreIcon = ({ name, className, size = "w-12 h-12" }) => {
-  const meta = getStoreMeta(name);
+const StoreIcon = ({ name, brandDomain, className, size = "w-12 h-12" }) => {
+  const meta = getStoreMeta(name, brandDomain);
   // attempt: 0 = try Brandfetch, 1 = show letter
   const [attempt, setAttempt] = useState(0);
 
@@ -306,13 +343,16 @@ const ShoppingView = ({ onBack }) => {
     setNewListName('');
   };
 
-  const addNewList = () => {
-    if (!newListName.trim()) return;
+  const addNewList = async () => {
+    const trimmedName = newListName.trim();
+    if (!trimmedName) return;
+    const brandDomain = await searchBrandDomain(trimmedName);
     const newList = {
       id: Date.now().toString(),
-      name: newListName,
+      name: trimmedName,
       fixed: false,
-      items: []
+      items: [],
+      ...(brandDomain ? { brandDomain } : {})
     };
     const updatedLists = [...lists, newList];
     setLists(updatedLists);
@@ -488,7 +528,7 @@ const ShoppingView = ({ onBack }) => {
                 } ${bulkDragMode && list.id !== 'general' ? 'ring-2 ring-indigo-300' : ''}`}
               >
                  <div className="mb-1 relative z-10">
-                   <StoreIcon name={list.name} size="w-10 h-10" />
+                   <StoreIcon name={list.name} brandDomain={list.brandDomain} size="w-10 h-10" />
                  </div>
                  
                  <div className={`text-[10px] font-medium truncate max-w-[80px] px-1 relative z-10 ${isActive ? 'text-gray-900' : 'text-gray-500'}`}>
@@ -526,7 +566,7 @@ const ShoppingView = ({ onBack }) => {
         
         <div className="p-6 pb-2 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <StoreIcon name={activeList.name} size="w-10 h-10 shadow-sm border border-gray-100" />
+              <StoreIcon name={activeList.name} brandDomain={activeList.brandDomain} size="w-10 h-10 shadow-sm border border-gray-100" />
               <div>
                 <h2 className="text-xl font-bold text-gray-800 leading-tight">
                   {activeList.name}
@@ -730,7 +770,7 @@ const ShoppingView = ({ onBack }) => {
                   onClick={() => moveItemToList(l.id)}
                   className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-indigo-50 transition-colors text-left"
                 >
-                  <StoreIcon name={l.name} size="w-10 h-10" />
+                  <StoreIcon name={l.name} brandDomain={l.brandDomain} size="w-10 h-10" />
                   <span className="font-medium text-gray-800">{l.name}</span>
                 </button>
               ))}
