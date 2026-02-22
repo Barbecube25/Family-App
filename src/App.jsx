@@ -91,13 +91,11 @@ const getDailySummary = (offset) => {
 const BRANDFETCH_KEY = (import.meta.env.VITE_BRANDFETCH_KEY || '').trim();
 const BRANDFETCH_SEARCH_TIMEOUT_MS = 4000;
 if (!BRANDFETCH_KEY) {
-  console.warn(
-    '[Brandfetch] VITE_BRANDFETCH_KEY fehlt oder ist ungültig. Bitte Dev-Server neu starten, .env-Format prüfen (VITE_BRANDFETCH_KEY=<key>) und ggf. Adblocker/Tracking-Schutz für localhost deaktivieren.'
-  );
+  console.info('[Brandfetch] Kein VITE_BRANDFETCH_KEY gesetzt. Nutze Clearbit-Logos als Standard.');
 }
 const brandfetchUrl = (domain) =>
-  BRANDFETCH_KEY && domain
-    ? `https://cdn.brandfetch.io/${domain}/w/400/h/400?c=${BRANDFETCH_KEY}`
+  domain
+    ? `https://logo.clearbit.com/${domain}`
     : null;
 
 const searchBrandDomain = async (identifier) => {
