@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   ShoppingCart, Calendar, Wallet, CheckSquare, Package, 
   CloudSun, Trash2, Backpack, FolderOpen, Plus, 
@@ -282,6 +282,8 @@ const DailyOverviewTile = ({ offset, setOffset, onWeatherClick }) => {
 };
 
 const ShoppingView = ({ onBack }) => {
+  const LONG_PRESS_DURATION_MS = 450;
+  const CLICK_SUPPRESS_DURATION_MS = 350;
   const [lists, setLists] = useState(() => {
     try {
       const saved = localStorage.getItem('family_app_shopping_lists');
@@ -305,6 +307,10 @@ const ShoppingView = ({ onBack }) => {
   const [newListName, setNewListName] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [moveItemState, setMoveItemState] = useState(null); // { id, sourceId }
+  const [selectedItemKeys, setSelectedItemKeys] = useState([]);
+  const [bulkDragMode, setBulkDragMode] = useState(false);
+  const longPressTimerRef = useRef(null);
+  const suppressClickUntilRef = useRef(0);
 
   const closeCreateModal = () => {
     setShowCreateModal(false);
@@ -390,6 +396,62 @@ const ShoppingView = ({ onBack }) => {
     setMoveItemState(null);
   };
 
+  const stopLongPressTimer = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const itemKey = (item) => `${item.sourceId}:${item.id}`;
+
+  const startItemLongPress = (item) => {
+    stopLongPressTimer();
+    longPressTimerRef.current = setTimeout(() => {
+      const key = itemKey(item);
+      if (selectedItemKeys.includes(key)) {
+        setBulkDragMode(true);
+      } else {
+        setSelectedItemKeys([key]);
+        setBulkDragMode(false);
+      }
+      suppressClickUntilRef.current = Date.now() + CLICK_SUPPRESS_DURATION_MS;
+    }, LONG_PRESS_DURATION_MS);
+  };
+
+  const toggleItemSelection = (item) => {
+    const key = itemKey(item);
+    setSelectedItemKeys(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+  };
+
+  const moveSelectedItemsToList = (targetListId) => {
+    if (!selectedItemKeys.length || targetListId === 'general') return;
+    const selectedKeySet = new Set(selectedItemKeys);
+    const withRemoved = lists.map(list => {
+      if (list.id === targetListId) return list;
+      return { ...list, items: list.items.filter(i => !selectedKeySet.has(`${list.id}:${i.id}`)) };
+    });
+    const movedItems = lists.flatMap(list =>
+      list.id === targetListId
+        ? []
+        : list.items
+            .filter(i => selectedKeySet.has(`${list.id}:${i.id}`))
+            .map(i => ({ text: i.text, done: false }))
+    );
+    if (!movedItems.length) return;
+    const maxItemId = lists
+      .flatMap(list => list.items.map(i => Number(i.id)))
+      .filter(Number.isFinite)
+      .reduce((max, id) => Math.max(max, id), 0);
+    const baseMoveId = maxItemId || Date.now();
+    setLists(withRemoved.map(list => list.id === targetListId ? {
+      ...list,
+      items: [...list.items, ...movedItems.map((item, index) => ({ ...item, id: baseMoveId + index }))]
+    } : list));
+    setSelectedItemKeys([]);
+    setBulkDragMode(false);
+  };
+
   const activeList = lists.find(l => l.id === activeListId) || lists[0];
   
   const itemsToDisplay = activeList.id === 'general'
@@ -398,6 +460,7 @@ const ShoppingView = ({ onBack }) => {
     : activeList.items.map(i => ({ ...i, sourceName: activeList.name, sourceId: activeList.id }));
 
   const openCount = itemsToDisplay.filter(i => !i.done).length;
+  const isSelectionMode = selectedItemKeys.length > 0;
 
   return (
     <div className="animate-fade-in flex flex-col h-full bg-gray-50 min-h-screen">
@@ -420,11 +483,20 @@ const ShoppingView = ({ onBack }) => {
               <button
                 key={list.id}
                 onClick={() => setActiveListId(list.id)}
+                onDragOver={(e) => {
+                  if (!bulkDragMode || list.id === 'general') return;
+                  e.preventDefault();
+                }}
+                onDrop={(e) => {
+                  if (!bulkDragMode || list.id === 'general') return;
+                  e.preventDefault();
+                  moveSelectedItemsToList(list.id);
+                }}
                 className={`snap-start relative flex-shrink-0 w-24 h-24 rounded-3xl flex flex-col items-center justify-center transition-all duration-300 overflow-hidden ${
                   isActive 
                     ? 'bg-white ring-4 ring-offset-2 ring-indigo-200 shadow-xl scale-105 z-10' 
                     : 'bg-white text-gray-500 shadow-sm border border-gray-100 hover:bg-gray-50'
-                }`}
+                } ${bulkDragMode && list.id !== 'general' ? 'ring-2 ring-indigo-300' : ''}`}
               >
                  <div className="mb-1 relative z-10">
                    <StoreIcon name={list.name} size="w-10 h-10" />
@@ -492,12 +564,40 @@ const ShoppingView = ({ onBack }) => {
                  <p className="text-sm">Keine Artikel auf der Liste</p>
                </div>
            ) : (
-               itemsToDisplay.map(item => (
-                 <div 
-                   key={item.id} 
-                   onClick={() => toggleItem(item.id)}
-                   className={`group flex items-center p-4 rounded-2xl transition-all duration-200 cursor-pointer border ${item.done ? 'bg-gray-50 border-transparent' : 'bg-white border-gray-100 shadow-sm'}`}
-                 >
+                itemsToDisplay.map(item => {
+                  const key = itemKey(item);
+                  const isSelected = selectedItemKeys.includes(key);
+                  return (
+                  <div 
+                    key={item.id} 
+                    onClick={() => {
+                      if (Date.now() < suppressClickUntilRef.current) {
+                        return;
+                      }
+                      if (isSelectionMode) {
+                        toggleItemSelection(item);
+                        setBulkDragMode(false);
+                      } else {
+                        toggleItem(item.id);
+                      }
+                    }}
+                    onPointerDown={() => startItemLongPress(item)}
+                    onPointerUp={stopLongPressTimer}
+                    onPointerLeave={stopLongPressTimer}
+                    draggable={bulkDragMode && isSelected}
+                    onDragStart={(e) => {
+                      if (!(bulkDragMode && isSelected)) {
+                        e.preventDefault();
+                        return;
+                      }
+                      e.dataTransfer.effectAllowed = 'move';
+                    }}
+                    className={`group flex items-center p-4 rounded-2xl transition-all duration-200 cursor-pointer border ${
+                      isSelected
+                        ? 'bg-indigo-50 border-indigo-300 shadow-sm'
+                        : item.done ? 'bg-gray-50 border-transparent' : 'bg-white border-gray-100 shadow-sm'
+                    }`}
+                  >
                    <div className={`w-6 h-6 rounded-lg border-2 mr-4 flex items-center justify-center transition-colors ${item.done ? 'border-gray-300 bg-gray-300' : 'border-indigo-400'}`}>
                      {item.done && <Check size={16} className="text-white" />}
                    </div>
@@ -526,10 +626,10 @@ const ShoppingView = ({ onBack }) => {
                      className={`p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all ${item.done ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                    >
                      <X size={18} />
-                   </button>
-                 </div>
-               ))
-           )}
+                    </button>
+                  </div>
+                )})
+            )}
         </div>
 
         <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-white via-white to-white/0 pt-10">
