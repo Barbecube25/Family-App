@@ -297,6 +297,7 @@ const ShoppingView = ({ onBack }) => {
   const [bulkDragMode, setBulkDragMode] = useState(false);
   const longPressTimerRef = useRef(null);
   const suppressClickUntilRef = useRef(0);
+  const [draggedListId, setDraggedListId] = useState(null);
 
   const closeCreateModal = () => {
     setShowCreateModal(false);
@@ -438,6 +439,17 @@ const ShoppingView = ({ onBack }) => {
     setBulkDragMode(false);
   };
 
+  const reorderLists = (draggedId, targetId) => {
+    if (draggedId === targetId || draggedId === 'general' || targetId === 'general') return;
+    const dragIdx = lists.findIndex(l => l.id === draggedId);
+    const targetIdx = lists.findIndex(l => l.id === targetId);
+    if (dragIdx === -1 || targetIdx === -1) return;
+    const newLists = [...lists];
+    const [removed] = newLists.splice(dragIdx, 1);
+    newLists.splice(targetIdx, 0, removed);
+    setLists(newLists);
+  };
+
   const activeList = lists.find(l => l.id === activeListId) || lists[0];
   
   const itemsToDisplay = activeList.id === 'general'
@@ -469,20 +481,37 @@ const ShoppingView = ({ onBack }) => {
               <button
                 key={list.id}
                 onClick={() => setActiveListId(list.id)}
+                draggable={list.id !== 'general' && !bulkDragMode}
+                onDragStart={(e) => {
+                  if (list.id === 'general' || bulkDragMode) { e.preventDefault(); return; }
+                  setDraggedListId(list.id);
+                  e.dataTransfer.effectAllowed = 'move';
+                }}
+                onDragEnd={() => setDraggedListId(null)}
                 onDragOver={(e) => {
-                  if (!bulkDragMode || list.id === 'general') return;
-                  e.preventDefault();
+                  if (bulkDragMode) {
+                    if (list.id !== 'general') e.preventDefault();
+                    return;
+                  }
+                  if (draggedListId && draggedListId !== list.id && list.id !== 'general') e.preventDefault();
                 }}
                 onDrop={(e) => {
-                  if (!bulkDragMode || list.id === 'general') return;
+                  if (bulkDragMode) {
+                    if (list.id === 'general') return;
+                    e.preventDefault();
+                    moveSelectedItemsToList(list.id);
+                    return;
+                  }
+                  if (!draggedListId || draggedListId === list.id || list.id === 'general') return;
                   e.preventDefault();
-                  moveSelectedItemsToList(list.id);
+                  reorderLists(draggedListId, list.id);
+                  setDraggedListId(null);
                 }}
                 className={`snap-start relative flex-shrink-0 w-24 h-24 rounded-3xl flex flex-col items-center justify-center transition-all duration-300 overflow-hidden ${
                   isActive 
                     ? 'bg-white ring-4 ring-offset-2 ring-indigo-200 shadow-xl scale-105 z-10' 
                     : 'bg-white text-gray-500 shadow-sm border border-gray-100 hover:bg-gray-50'
-                } ${bulkDragMode && list.id !== 'general' ? 'ring-2 ring-indigo-300' : ''}`}
+                } ${bulkDragMode && list.id !== 'general' ? 'ring-2 ring-indigo-300' : ''} ${draggedListId === list.id ? 'opacity-40' : ''} ${draggedListId && draggedListId !== list.id && list.id !== 'general' ? 'ring-2 ring-dashed ring-indigo-300' : ''}`}
               >
                  <div className="mb-1 relative z-10">
                    <StoreIcon name={list.name} brandDomain={list.brandDomain} size="w-10 h-10" />
