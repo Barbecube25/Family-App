@@ -91,13 +91,11 @@ const getDailySummary = (offset) => {
 const BRANDFETCH_KEY = (import.meta.env.VITE_BRANDFETCH_KEY || '').trim();
 const BRANDFETCH_SEARCH_TIMEOUT_MS = 4000;
 if (!BRANDFETCH_KEY) {
-  console.warn(
-    '[Brandfetch] VITE_BRANDFETCH_KEY fehlt oder ist ungültig. Bitte Dev-Server neu starten, .env-Format prüfen (VITE_BRANDFETCH_KEY=<key>) und ggf. Adblocker/Tracking-Schutz für localhost deaktivieren.'
-  );
+  console.info('[Brandfetch] Kein VITE_BRANDFETCH_KEY gesetzt. Nutze Clearbit-Logos als Standard.');
 }
-const brandfetchUrl = (domain) =>
-  BRANDFETCH_KEY && domain
-    ? `https://cdn.brandfetch.io/${domain}/w/400/h/400?c=${BRANDFETCH_KEY}`
+const getClearbitLogoUrl = (domain) =>
+  domain
+    ? `https://logo.clearbit.com/${domain}`
     : null;
 
 const searchBrandDomain = async (identifier) => {
@@ -140,7 +138,7 @@ const getStoreMeta = (name, resolvedDomain) => {
   if (resolvedDomain) {
     return {
       type: 'logo',
-      src: brandfetchUrl(resolvedDomain),
+      src: getClearbitLogoUrl(resolvedDomain),
       fallbackLetter: name.charAt(0).toUpperCase(),
       bg: 'bg-indigo-100',
       text: 'text-indigo-600',
@@ -185,7 +183,7 @@ const getStoreMeta = (name, resolvedDomain) => {
     if (nNorm.includes(key) || n.includes(key)) {
       return {
         type: 'logo',
-        src: brandfetchUrl(meta.domain),
+        src: getClearbitLogoUrl(meta.domain),
         localSrc: `/logos/${meta.file}`,
         fallbackLetter: name.charAt(0).toUpperCase(),
         bg: meta.bg,
@@ -201,7 +199,7 @@ const getStoreMeta = (name, resolvedDomain) => {
 
   return {
     type: 'logo',
-    src: brandfetchUrl(guessedDomain),
+    src: getClearbitLogoUrl(guessedDomain),
     fallbackLetter: name.charAt(0).toUpperCase(),
     bg: 'bg-indigo-100',
     text: 'text-indigo-600',
