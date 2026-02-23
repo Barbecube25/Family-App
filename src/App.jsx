@@ -135,16 +135,6 @@ const getStoreMeta = (name, resolvedDomain) => {
     return { type: 'icon', bg: 'bg-gray-800', text: 'text-white', content: <ShoppingBag size={24}/> };
   }
 
-  if (resolvedDomain) {
-    return {
-      type: 'logo',
-      src: getClearbitLogoUrl(resolvedDomain),
-      fallbackLetter: name.charAt(0).toUpperCase(),
-      bg: 'bg-indigo-100',
-      text: 'text-indigo-600',
-    };
-  }
-
   // 2. Known stores – precise domain for real logo + local brand SVG as offline fallback
   const domainMap = {
     'rewe':       { domain: 'rewe.de',           file: 'rewe.svg',       bg: 'bg-red-100',    text: 'text-red-600' },
@@ -183,7 +173,7 @@ const getStoreMeta = (name, resolvedDomain) => {
     if (nNorm.includes(key) || n.includes(key)) {
       return {
         type: 'logo',
-        src: getClearbitLogoUrl(meta.domain),
+        src: getClearbitLogoUrl(resolvedDomain || meta.domain),
         localSrc: `/logos/${meta.file}`,
         fallbackLetter: name.charAt(0).toUpperCase(),
         bg: meta.bg,
@@ -192,7 +182,17 @@ const getStoreMeta = (name, resolvedDomain) => {
     }
   }
 
-  // 3. Newly created / unknown stores – auto-guess domain and try logo service
+  // 3. Newly created / unknown stores – use Brandfetch domain if available, else auto-guess
+  if (resolvedDomain) {
+    return {
+      type: 'logo',
+      src: getClearbitLogoUrl(resolvedDomain),
+      fallbackLetter: name.charAt(0).toUpperCase(),
+      bg: 'bg-indigo-100',
+      text: 'text-indigo-600',
+    };
+  }
+
   const guessedDomain = nNorm
     .replace(/[^a-z0-9\s]/g, '').trim()
     .split(/\s+/)[0] + '.de';
@@ -340,6 +340,7 @@ const ShoppingView = ({ onBack }) => {
   const [newItemInput, setNewItemInput] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newListName, setNewListName] = useState('');
+  const [isCreatingList, setIsCreatingList] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [moveItemState, setMoveItemState] = useState(null); // { id, sourceId }
   const [selectedItemKeys, setSelectedItemKeys] = useState([]);
@@ -354,19 +355,23 @@ const ShoppingView = ({ onBack }) => {
 
   const addNewList = async () => {
     const trimmedName = newListName.trim();
-    if (!trimmedName) return;
-    const brandDomain = await searchBrandDomain(trimmedName);
-    const newList = {
-      id: Date.now().toString(),
-      name: trimmedName,
-      fixed: false,
-      items: [],
-      ...(brandDomain ? { brandDomain } : {})
-    };
-    const updatedLists = [...lists, newList];
-    setLists(updatedLists);
-    setActiveListId(newList.id);
-    closeCreateModal();
+    if (!trimmedName || isCreatingList) return;
+    setIsCreatingList(true);
+    try {
+      const brandDomain = await searchBrandDomain(trimmedName);
+      const newList = {
+        id: crypto.randomUUID(),
+        name: trimmedName,
+        fixed: false,
+        items: [],
+        ...(brandDomain ? { brandDomain } : {})
+      };
+      setLists(prev => [...prev, newList]);
+      setActiveListId(newList.id);
+      closeCreateModal();
+    } finally {
+      setIsCreatingList(false);
+    }
   };
 
   const deleteList = (id) => {
@@ -716,10 +721,10 @@ const ShoppingView = ({ onBack }) => {
                  </button>
                  <button 
                    onClick={addNewList}
-                   disabled={!newListName.trim()}
+                   disabled={!newListName.trim() || isCreatingList}
                    className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-medium shadow-lg shadow-indigo-200 disabled:opacity-40 disabled:shadow-none"
                  >
-                   Erstellen
+                   {isCreatingList ? 'Suche...' : 'Erstellen'}
                  </button>
               </div>
            </div>
