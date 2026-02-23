@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   ShoppingCart, Calendar, Wallet, CheckSquare, Package, 
   CloudSun, Trash2, Backpack, FolderOpen, Plus, 
@@ -38,10 +38,9 @@ const INITIAL_SHOPPING_LISTS = [
   }
 ];
 
-const INITIAL_TASKS = [
-  { id: 1, text: 'Spülmaschine ausräumen', assign: 'Max', done: false },
-  { id: 2, text: 'Rasen mähen', assign: 'Papa', done: false },
-  { id: 3, text: 'Hausaufgaben', assign: 'Lisa', done: true },
+const TASK_COLORS = [
+  'bg-green-500', 'bg-teal-500', 'bg-blue-400', 'bg-indigo-400',
+  'bg-purple-400', 'bg-rose-400', 'bg-amber-500', 'bg-orange-400',
 ];
 
 const FINANCE_DATA = {
@@ -1029,46 +1028,585 @@ const CalendarView = ({ onBack }) => (
 );
 
 const TaskView = ({ onBack }) => {
-    const [tasks, setTasks] = useState(() => {
-        try {
-            const saved = localStorage.getItem('family_app_tasks');
-            return saved ? JSON.parse(saved) : INITIAL_TASKS;
-        } catch {
-            return INITIAL_TASKS;
-        }
+  const LONG_PRESS_MS = 450;
+  const SUPPRESS_MS = 350;
+
+  const [lists, setLists] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('family_app_task_lists') || 'null') || []; }
+    catch { return []; }
+  });
+
+  const [dailyTasks, setDailyTasks] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('family_app_daily_tasks') || 'null') || []; }
+    catch { return []; }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem('family_app_task_lists', JSON.stringify(lists)); } catch {}
+  }, [lists]);
+
+  useEffect(() => {
+    try { localStorage.setItem('family_app_daily_tasks', JSON.stringify(dailyTasks)); } catch {}
+  }, [dailyTasks]);
+
+  const [activeListId, setActiveListId] = useState(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editListId, setEditListId] = useState(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [modalName, setModalName] = useState('');
+  const [listItemInput, setListItemInput] = useState('');
+  const [dailyInput, setDailyInput] = useState('');
+  const [quickAssign, setQuickAssign] = useState(null); // null | 'Michael' | 'Sonja'
+  const [moveState, setMoveState] = useState(null); // { id, sourceId: 'daily' | listId }
+  const [selectedKeys, setSelectedKeys] = useState([]);
+  const [bulkDrag, setBulkDrag] = useState(false);
+  const longPressRef = useRef(null);
+  const suppressRef = useRef(0);
+
+  const stopLongPress = () => {
+    if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; }
+  };
+
+  const startLongPress = (key) => {
+    stopLongPress();
+    longPressRef.current = setTimeout(() => {
+      setSelectedKeys([key]);
+      suppressRef.current = Date.now() + SUPPRESS_MS;
+    }, LONG_PRESS_MS);
+  };
+
+  const handleItemClick = (key, toggleFn) => {
+    if (Date.now() < suppressRef.current) return;
+    if (selectedKeys.length > 0) {
+      setSelectedKeys(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+    } else {
+      toggleFn();
+    }
+  };
+
+  const isSelMode = selectedKeys.length > 0;
+
+  // ── Daily task helpers ──────────────────────────────────────
+  const addDailyTask = () => {
+    if (!dailyInput.trim()) return;
+    setDailyTasks(prev => [...prev, { id: crypto.randomUUID(), text: dailyInput.trim(), assign: quickAssign, done: false }]);
+    setDailyInput('');
+    setQuickAssign(null);
+  };
+
+  const sortedDailyTasks = useMemo(
+    () => [...dailyTasks].sort((a, b) => (a.assign || '').localeCompare(b.assign || '')),
+    [dailyTasks]
+  );
+
+  // ── Task list management ─────────────────────────────────────
+  const addList = () => {
+    const name = modalName.trim();
+    if (!name) return;
+    setLists(prev => [...prev, {
+      id: crypto.randomUUID(), name,
+      color: TASK_COLORS[prev.length % TASK_COLORS.length], items: [],
+    }]);
+    setShowCreateModal(false);
+    setModalName('');
+  };
+
+  const saveListName = () => {
+    const name = modalName.trim();
+    if (!name || !editListId) return;
+    setLists(prev => prev.map(l => l.id === editListId ? { ...l, name } : l));
+    setEditListId(null);
+    setModalName('');
+  };
+
+  const confirmDeleteList = () => {
+    setLists(prev => prev.filter(l => l.id !== deleteConfirmId));
+    if (activeListId === deleteConfirmId) setActiveListId(null);
+    setDeleteConfirmId(null);
+  };
+
+  const addListItem = () => {
+    if (!listItemInput.trim()) return;
+    setLists(prev => prev.map(l => l.id !== activeListId ? l : {
+      ...l, items: [...l.items, { id: crypto.randomUUID(), text: listItemInput.trim(), done: false }],
+    }));
+    setListItemInput('');
+  };
+
+  const activeList = lists.find(l => l.id === activeListId);
+
+  // ── Single-item move ──────────────────────────────────────────
+  const executeMoveTask = (targetId) => {
+    if (!moveState) return;
+    const { id, sourceId } = moveState;
+    if (sourceId === 'daily') {
+      const task = dailyTasks.find(t => t.id === id);
+      if (!task || targetId === 'daily') { setMoveState(null); return; }
+      setDailyTasks(prev => prev.filter(t => t.id !== id));
+      setLists(prev => prev.map(l => l.id === targetId
+        ? { ...l, items: [...l.items, { id: crypto.randomUUID(), text: task.text, done: false }] } : l));
+    } else {
+      const src = lists.find(l => l.id === sourceId);
+      const item = src?.items.find(i => i.id === id);
+      if (!item) { setMoveState(null); return; }
+      if (targetId === 'daily') {
+        setLists(prev => prev.map(l => l.id === sourceId
+          ? { ...l, items: l.items.filter(i => i.id !== id) } : l));
+        setDailyTasks(prev => [...prev, { id: crypto.randomUUID(), text: item.text, assign: null, done: false }]);
+      } else {
+        setLists(prev => prev.map(l => {
+          if (l.id === sourceId) return { ...l, items: l.items.filter(i => i.id !== id) };
+          if (l.id === targetId) return { ...l, items: [...l.items, { id: crypto.randomUUID(), text: item.text, done: false }] };
+          return l;
+        }));
+      }
+    }
+    setMoveState(null);
+  };
+
+  // ── Bulk move (selection mode) ────────────────────────────────
+  const moveSelectedTo = (targetId) => {
+    const dailyToMove = dailyTasks.filter(t => selectedKeys.includes(`daily:${t.id}`));
+    const listToMove = lists.flatMap(l =>
+      l.items.filter(i => selectedKeys.includes(`${l.id}:${i.id}`)).map(i => ({ ...i, sourceListId: l.id }))
+    );
+    if (!dailyToMove.length && !listToMove.length) { setSelectedKeys([]); return; }
+
+    const allTexts = [...dailyToMove.map(t => t.text), ...listToMove.map(i => i.text)];
+    const dailyIdSet = new Set(dailyToMove.map(t => t.id));
+    const listKeySet = new Set(listToMove.map(i => `${i.sourceListId}:${i.id}`));
+
+    setDailyTasks(prev => {
+      const cleaned = prev.filter(t => !dailyIdSet.has(t.id));
+      if (targetId === 'daily') {
+        return [...cleaned, ...allTexts.map(text => ({ id: crypto.randomUUID(), text, assign: null, done: false }))];
+      }
+      return cleaned;
     });
 
-    useEffect(() => {
-        try {
-            localStorage.setItem('family_app_tasks', JSON.stringify(tasks));
-        } catch {
-            // storage quota exceeded or unavailable – ignore
-        }
-    }, [tasks]);
-    
-    const toggleTask = (id) => {
-        setTasks(tasks.map(t => t.id === id ? {...t, done: !t.done} : t));
-    };
+    setLists(prev => {
+      const cleaned = prev.map(l => ({ ...l, items: l.items.filter(i => !listKeySet.has(`${l.id}:${i.id}`)) }));
+      if (targetId === 'daily') return cleaned;
+      return cleaned.map(l => l.id === targetId
+        ? { ...l, items: [...l.items, ...allTexts.map(text => ({ id: crypto.randomUUID(), text, done: false }))] }
+        : l);
+    });
 
+    setSelectedKeys([]);
+    setBulkDrag(false);
+  };
+
+  // ── Detail view ───────────────────────────────────────────────
+  if (activeList) {
     return (
-        <div className="animate-fade-in">
-            <Header title="Aufgaben" onBack={onBack} />
-            <div className="px-4 space-y-3">
-                {tasks.map(t => (
-                    <div key={t.id} onClick={() => toggleTask(t.id)} className="bg-white p-4 rounded-2xl flex items-center gap-4 cursor-pointer">
-                         <div className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${t.done ? 'bg-green-500 border-green-500' : 'border-gray-300'}`}>
-                            {t.done && <Check size={14} className="text-white" />}
-                         </div>
-                         <div className="flex-1">
-                             <div className={`font-medium ${t.done ? 'line-through text-gray-400' : 'text-gray-800'}`}>{t.text}</div>
-                             <div className="text-xs px-2 py-0.5 bg-gray-100 inline-block rounded-md mt-1 text-gray-500">{t.assign}</div>
-                         </div>
-                    </div>
-                ))}
+      <div className="animate-fade-in flex flex-col h-full bg-gray-50 min-h-screen">
+        <Header title={activeList.name} onBack={() => { setActiveListId(null); setSelectedKeys([]); setBulkDrag(false); }} />
+
+        <div className="flex-1 bg-white rounded-t-[2.5rem] shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative z-20 mt-4">
+          <div className="p-6 pb-2 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`p-3 rounded-2xl ${activeList.color} bg-opacity-20`}>
+                <CheckSquare size={24} className="text-gray-800" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-800">{activeList.name}</h2>
+                <span className="text-xs text-gray-500">{activeList.items.filter(i => !i.done).length} offen</span>
+              </div>
             </div>
-            <FAB icon={Plus} onClick={() => {}} />
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-4 pb-24 space-y-2 mt-2">
+            {activeList.items.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-40 text-gray-300 mt-4">
+                <CheckSquare size={40} className="mb-2 opacity-20" />
+                <p className="text-sm">Noch keine Aufgaben</p>
+              </div>
+            ) : (
+              activeList.items.map(item => {
+                const key = `${activeList.id}:${item.id}`;
+                const isSelected = selectedKeys.includes(key);
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => handleItemClick(key, () =>
+                      setLists(prev => prev.map(l => l.id !== activeListId ? l : {
+                        ...l, items: l.items.map(i => i.id === item.id ? { ...i, done: !i.done } : i),
+                      }))
+                    )}
+                    onPointerDown={() => startLongPress(key)}
+                    onPointerUp={stopLongPress}
+                    onPointerLeave={stopLongPress}
+                    className={`group flex items-center p-4 rounded-2xl transition-all duration-200 cursor-pointer border ${
+                      isSelected ? 'bg-green-50 border-green-300 shadow-sm'
+                        : item.done ? 'bg-gray-50 border-transparent' : 'bg-white border-gray-100 shadow-sm'
+                    }`}
+                  >
+                    <div className={`w-6 h-6 rounded-lg border-2 mr-4 flex items-center justify-center transition-colors ${item.done ? 'border-gray-300 bg-gray-300' : 'border-green-400'}`}>
+                      {item.done && <Check size={16} className="text-white" />}
+                    </div>
+                    <span className={`flex-1 font-medium ${item.done ? 'line-through text-gray-400' : 'text-gray-700'}`}>{item.text}</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setMoveState({ id: item.id, sourceId: activeList.id }); }}
+                      className={`p-2 text-gray-300 hover:text-green-500 hover:bg-green-50 rounded-full transition-all ${item.done ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                    >
+                      <ArrowRight size={18} />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setLists(prev => prev.map(l => l.id !== activeListId ? l : { ...l, items: l.items.filter(i => i.id !== item.id) })); }}
+                      className={`p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all ${item.done ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-white via-white to-white/0 pt-10">
+            <div className="flex gap-2 bg-white/50 backdrop-blur-sm p-1 rounded-full shadow-lg border border-gray-100">
+              <input
+                value={listItemInput}
+                onChange={e => setListItemInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addListItem()}
+                placeholder={`Zu ${activeList.name} hinzufügen...`}
+                className="flex-1 bg-transparent px-6 py-3 outline-none text-gray-800 placeholder-gray-400"
+              />
+              <button onClick={addListItem} className="w-12 h-12 bg-green-600 rounded-full text-white flex items-center justify-center shadow-md active:scale-95 hover:bg-green-700 transition-colors">
+                <Plus size={20} />
+              </button>
+            </div>
+          </div>
         </div>
+
+        {moveState && (
+          <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
+            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-20 sm:mb-0">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 bg-green-100 rounded-2xl flex items-center justify-center">
+                  <ArrowRight size={22} className="text-green-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold">Aufgabe verschieben</h3>
+                  <p className="text-sm text-gray-500 truncate max-w-[200px]">
+                    {activeList.items.find(i => i.id === moveState?.id)?.text}
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-2 mb-4">
+                <button
+                  onClick={() => executeMoveTask('daily')}
+                  className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-green-50 transition-colors text-left"
+                >
+                  <div className="w-10 h-10 rounded-2xl bg-green-100 flex items-center justify-center">
+                    <CheckSquare size={20} className="text-green-600" />
+                  </div>
+                  <span className="font-medium text-gray-800">Tagesaufgaben</span>
+                </button>
+                {lists.filter(l => l.id !== moveState?.sourceId).map(l => (
+                  <button
+                    key={l.id}
+                    onClick={() => executeMoveTask(l.id)}
+                    className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-green-50 transition-colors text-left"
+                  >
+                    <div className={`w-10 h-10 rounded-2xl ${l.color} bg-opacity-20 flex items-center justify-center`}>
+                      <CheckSquare size={20} className="text-gray-700" />
+                    </div>
+                    <span className="font-medium text-gray-800">{l.name}</span>
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setMoveState(null)} className="w-full py-3 text-gray-500 hover:bg-gray-100 rounded-xl font-medium">
+                Abbrechen
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     );
+  }
+
+  // ── Overview ──────────────────────────────────────────────────
+  return (
+    <div className="animate-fade-in min-h-screen bg-gray-50 pb-24">
+      <Header title="Aufgaben" onBack={onBack} />
+
+      {/* ── Tagesaufgaben section ── */}
+      <div className="mx-4 mt-2 mb-4 bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-5 pt-4 pb-2 flex items-center gap-2">
+          <CheckSquare size={18} className="text-green-600" />
+          <h2 className="font-semibold text-gray-800">Tagesaufgaben</h2>
+          {sortedDailyTasks.length > 0 && (
+            <span className="ml-auto text-xs text-gray-400 font-medium">{sortedDailyTasks.filter(t => !t.done).length} offen</span>
+          )}
+        </div>
+
+        {/* Input row */}
+        <div className="px-4 pb-3">
+          <div className="flex gap-2 items-center bg-gray-50 rounded-2xl border border-gray-100 p-1 pl-4">
+            <input
+              value={dailyInput}
+              onChange={e => setDailyInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addDailyTask()}
+              placeholder="Neue Tagesaufgabe..."
+              className="flex-1 bg-transparent py-2 outline-none text-gray-800 placeholder-gray-400 text-sm"
+            />
+            <button
+              onClick={() => setQuickAssign(prev => prev === 'Michael' ? null : 'Michael')}
+              className={`w-8 h-8 rounded-xl text-sm font-bold transition-colors flex-shrink-0 ${quickAssign === 'Michael' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-200 text-gray-600 hover:bg-blue-100'}`}
+            >
+              M
+            </button>
+            <button
+              onClick={() => setQuickAssign(prev => prev === 'Sonja' ? null : 'Sonja')}
+              className={`w-8 h-8 rounded-xl text-sm font-bold transition-colors flex-shrink-0 ${quickAssign === 'Sonja' ? 'bg-pink-500 text-white shadow-md' : 'bg-gray-200 text-gray-600 hover:bg-pink-100'}`}
+            >
+              S
+            </button>
+            <button
+              onClick={addDailyTask}
+              disabled={!dailyInput.trim()}
+              className="w-8 h-8 bg-green-600 rounded-xl text-white flex items-center justify-center flex-shrink-0 disabled:opacity-40 hover:bg-green-700 transition-colors"
+            >
+              <Plus size={16} />
+            </button>
+          </div>
+          {quickAssign && (
+            <p className="text-xs text-gray-400 mt-1 px-1">Für: <span className="font-medium text-gray-600">{quickAssign}</span></p>
+          )}
+        </div>
+
+        {/* Daily task list */}
+        {sortedDailyTasks.length > 0 && (
+          <div className="px-4 pb-4 space-y-2">
+            {sortedDailyTasks.map(task => {
+              const key = `daily:${task.id}`;
+              const isSelected = selectedKeys.includes(key);
+              return (
+                <div
+                  key={task.id}
+                  onClick={() => handleItemClick(key, () =>
+                    setDailyTasks(prev => prev.map(t => t.id === task.id ? { ...t, done: !t.done } : t))
+                  )}
+                  onPointerDown={() => startLongPress(key)}
+                  onPointerUp={stopLongPress}
+                  onPointerLeave={stopLongPress}
+                  draggable={isSelMode && isSelected}
+                  onDragStart={e => { if (!(isSelMode && isSelected)) { e.preventDefault(); return; } e.dataTransfer.effectAllowed = 'move'; setBulkDrag(true); }}
+                  className={`group flex items-center p-3 rounded-2xl cursor-pointer border transition-all duration-200 ${
+                    isSelected ? 'bg-green-50 border-green-300' : task.done ? 'bg-gray-50 border-transparent' : 'bg-white border-gray-100 shadow-sm'
+                  }`}
+                >
+                  <div className={`w-5 h-5 rounded-md border-2 mr-3 flex items-center justify-center flex-shrink-0 transition-colors ${task.done ? 'border-gray-300 bg-gray-300' : 'border-green-400'}`}>
+                    {task.done && <Check size={12} className="text-white" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className={`text-sm font-medium ${task.done ? 'line-through text-gray-400' : 'text-gray-700'}`}>{task.text}</span>
+                    {task.assign && (
+                      <span className={`ml-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${task.assign === 'Michael' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'}`}>
+                        {task.assign.charAt(0)}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setMoveState({ id: task.id, sourceId: 'daily' }); }}
+                    className={`p-1.5 text-gray-300 hover:text-green-500 hover:bg-green-50 rounded-full transition-all ${task.done ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                  >
+                    <ArrowRight size={16} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setDailyTasks(prev => prev.filter(t => t.id !== task.id)); }}
+                    className={`p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all ${task.done ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Selection banner */}
+      {isSelMode && (
+        <div className="mx-4 mb-3 px-4 py-2 bg-green-600 text-white rounded-2xl flex items-center shadow-lg">
+          <span className="text-sm font-medium">{selectedKeys.length} ausgewählt – auf eine Liste ziehen</span>
+          <button onClick={() => { setSelectedKeys([]); setBulkDrag(false); }} className="ml-auto text-white/80 hover:text-white text-sm">
+            Abbrechen
+          </button>
+        </div>
+      )}
+
+      {/* ── Custom task lists ── */}
+      <div className="px-4">
+        {lists.length > 0 && (
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3 px-1">Meine Listen</h2>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          {lists.map(list => {
+            const openCount = list.items.filter(i => !i.done).length;
+            return (
+              <div key={list.id} className="relative">
+                <div
+                  onClick={() => { if (!bulkDrag) { setActiveListId(list.id); setSelectedKeys([]); } }}
+                  onDragOver={e => { if (bulkDrag) e.preventDefault(); }}
+                  onDrop={e => { if (!bulkDrag) return; e.preventDefault(); moveSelectedTo(list.id); }}
+                  className={`relative overflow-hidden p-5 rounded-3xl bg-white hover:bg-gray-50 transition-all duration-300 cursor-pointer shadow-sm hover:shadow-md border border-gray-100 flex flex-col justify-between h-36 ${
+                    bulkDrag ? 'ring-2 ring-green-300 ring-dashed' : ''
+                  }`}
+                >
+                  <div className={`absolute top-0 right-0 p-20 rounded-full opacity-5 translate-x-8 -translate-y-8 ${list.color}`}></div>
+                  <div className="flex justify-between items-start z-10">
+                    <div className={`p-3 rounded-2xl ${list.color} bg-opacity-20 text-gray-800`}>
+                      <CheckSquare size={24} className="text-gray-900 opacity-80" />
+                    </div>
+                    {openCount > 0 && (
+                      <div className="w-5 h-5 rounded-full bg-green-100 text-green-700 flex items-center justify-center text-[10px] font-bold">{openCount}</div>
+                    )}
+                  </div>
+                  <div className="z-10">
+                    <h3 className="text-lg font-medium text-gray-800 leading-tight">{list.name}</h3>
+                    <p className="text-sm text-gray-500 mt-1">
+                      {list.items.length === 0 ? 'Keine Aufgaben' : `${openCount}/${list.items.length} offen`}
+                    </p>
+                  </div>
+                </div>
+                <div className="absolute top-2 right-2 flex gap-1">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setModalName(list.name); setEditListId(list.id); }}
+                    className="w-7 h-7 bg-white rounded-full shadow-md flex items-center justify-center text-gray-400 hover:text-green-500 transition-colors"
+                  >
+                    <Edit2 size={13} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(list.id); }}
+                    className="w-7 h-7 bg-white rounded-full shadow-md flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <FAB icon={Plus} onClick={() => { setModalName(''); setShowCreateModal(true); }} />
+
+      {/* ── Modals ── */}
+      {showCreateModal && (
+        <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-20 sm:mb-0">
+            <h3 className="text-lg font-semibold mb-4">Neue Liste erstellen</h3>
+            <input
+              value={modalName}
+              onChange={e => setModalName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addList()}
+              placeholder="Name (z.B. Haushalt, Garten)"
+              className="w-full bg-gray-100 px-4 py-3 rounded-xl outline-none mb-4 focus:ring-2 focus:ring-green-500"
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button onClick={() => { setShowCreateModal(false); setModalName(''); }} className="flex-1 py-3 text-gray-500 hover:bg-gray-100 rounded-xl font-medium">
+                Abbrechen
+              </button>
+              <button onClick={addList} disabled={!modalName.trim()} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-medium shadow-lg shadow-green-200 disabled:opacity-40 disabled:shadow-none">
+                Erstellen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editListId && (
+        <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-20 sm:mb-0">
+            <h3 className="text-lg font-semibold mb-4">Liste umbenennen</h3>
+            <input
+              value={modalName}
+              onChange={e => setModalName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && saveListName()}
+              placeholder="Name"
+              className="w-full bg-gray-100 px-4 py-3 rounded-xl outline-none mb-4 focus:ring-2 focus:ring-green-500"
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button onClick={() => { setEditListId(null); setModalName(''); }} className="flex-1 py-3 text-gray-500 hover:bg-gray-100 rounded-xl font-medium">
+                Abbrechen
+              </button>
+              <button onClick={saveListName} disabled={!modalName.trim()} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-medium shadow-lg shadow-green-200 disabled:opacity-40 disabled:shadow-none">
+                Speichern
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmId && (
+        <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-20 sm:mb-0">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center">
+                <Trash2 size={22} className="text-red-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">Liste löschen?</h3>
+                <p className="text-sm text-gray-500">
+                  &bdquo;{lists.find(l => l.id === deleteConfirmId)?.name}&ldquo; wird dauerhaft entfernt.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => setDeleteConfirmId(null)} className="flex-1 py-3 text-gray-500 hover:bg-gray-100 rounded-xl font-medium">
+                Abbrechen
+              </button>
+              <button onClick={confirmDeleteList} className="flex-1 py-3 bg-red-500 text-white rounded-xl font-medium shadow-lg shadow-red-200">
+                Löschen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {moveState && moveState.sourceId === 'daily' && (
+        <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-20 sm:mb-0">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-green-100 rounded-2xl flex items-center justify-center">
+                <ArrowRight size={22} className="text-green-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">Aufgabe verschieben</h3>
+                <p className="text-sm text-gray-500 truncate max-w-[200px]">
+                  {dailyTasks.find(t => t.id === moveState?.id)?.text}
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2 mb-4">
+              {lists.map(l => (
+                <button
+                  key={l.id}
+                  onClick={() => executeMoveTask(l.id)}
+                  className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-green-50 transition-colors text-left"
+                >
+                  <div className={`w-10 h-10 rounded-2xl ${l.color} bg-opacity-20 flex items-center justify-center`}>
+                    <CheckSquare size={20} className="text-gray-700" />
+                  </div>
+                  <span className="font-medium text-gray-800">{l.name}</span>
+                </button>
+              ))}
+              {lists.length === 0 && (
+                <p className="text-sm text-gray-400 text-center py-4">Keine Listen vorhanden</p>
+              )}
+            </div>
+            <button onClick={() => setMoveState(null)} className="w-full py-3 text-gray-500 hover:bg-gray-100 rounded-xl font-medium">
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 const PlaceholderView = ({ title, icon: Icon, onBack, color }) => (
