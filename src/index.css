@@ -38,3 +38,68 @@ body {
 .animate-fade-in {
   animation: fade-in 0.3s ease-out forwards;
 }
+
+/* ── Dark Mode ─────────────────────────────────────────────────── */
+html.dark {
+  color-scheme: dark;
+}
+
+.dark body {
+  background-color: #111827;
+  color: #f3f4f6;
+}
+
+/* Surface overrides */
+.dark .bg-white            { background-color: #1f2937 !important; }
+.dark .bg-\[\#fdfdfd\]     { background-color: #1f2937 !important; }
+.dark .bg-gray-50          { background-color: #111827 !important; }
+.dark .bg-\[\#f0f4f8\]     { background-color: #0d1117 !important; }
+.dark .bg-gray-100         { background-color: #374151 !important; }
+.dark .bg-gray-200         { background-color: #4b5563 !important; }
+
+/* Hover surface overrides */
+.dark .hover\:bg-gray-50:hover  { background-color: #374151 !important; }
+.dark .hover\:bg-gray-100:hover { background-color: #4b5563 !important; }
+
+/* Text overrides */
+.dark .text-gray-900 { color: #f9fafb !important; }
+.dark .text-gray-800 { color: #f3f4f6 !important; }
+.dark .text-gray-700 { color: #e5e7eb !important; }
+.dark .text-gray-600 { color: #d1d5db !important; }
+.dark .text-gray-500 { color: #9ca3af !important; }
+.dark .text-gray-400 { color: #6b7280 !important; }
+.dark .text-gray-300 { color: #4b5563 !important; }
+
+/* Border overrides */
+.dark .border-gray-100 { border-color: #374151 !important; }
+.dark .border-gray-200 { border-color: #4b5563 !important; }
+.dark .border-gray-300 { border-color: #6b7280 !important; }
+
+/* Placeholder */
+.dark .placeholder-gray-400::placeholder { color: #6b7280 !important; }
+
+/* Semi-transparent white backgrounds (input bars, backdrops) */
+.dark .bg-white\/50 { background-color: rgb(31 41 55 / 0.5) !important; }
+
+/* Gradient overlay fade: from-white / via-white → dark surface */
+.dark .from-white {
+  --tw-gradient-from: #1f2937 var(--tw-gradient-from-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgb(31 41 55 / 0)) !important;
+}
+.dark .via-white {
+  --tw-gradient-via-stops: var(--tw-gradient-from), #1f2937 var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+  --tw-gradient-stops: var(--tw-gradient-via-stops) !important;
+}
+
+/* Shadows on dark backgrounds */
+.dark .shadow-sm  { box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.5) !important; }
+.dark .shadow-md  { box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.4) !important; }
+.dark .shadow-xl  { box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.6), 0 8px 10px -6px rgb(0 0 0 / 0.5) !important; }
+.dark .shadow-2xl { box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.7) !important; }
+
+/* Suppress colored shadow tints that are unreadable on dark backgrounds */
+.dark .shadow-indigo-200,
+.dark .shadow-green-200,
+.dark .shadow-red-200,
+.dark .shadow-emerald-200,
+.dark .shadow-amber-200 { box-shadow: none !important; }

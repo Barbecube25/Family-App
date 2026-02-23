@@ -3,9 +3,45 @@ import {
   ShoppingCart, Calendar, Wallet, CheckSquare, Package, 
   CloudSun, Trash2, Backpack, FolderOpen, Plus, 
   ArrowLeft, Check, X, MoreVertical, MapPin, Search,
-  ChevronLeft, ChevronRight, Sparkles, Sun, Cloud, CloudRain,
+  ChevronLeft, ChevronRight, Sparkles, Sun, Moon, Cloud, CloudRain,
   Store, Edit2, ShoppingBag, Settings, ArrowRight
 } from 'lucide-react';
+
+// --- Dark Mode / Sunrise-Sunset ---
+
+// Default coordinates: Munich, Germany
+const DEFAULT_LAT = 48.1351;
+const DEFAULT_LNG = 11.582;
+
+/**
+ * Calculates local sunrise and sunset times for the given coordinates and today's date.
+ * Returns { sunrise: Date, sunset: Date } or null on polar day/night.
+ */
+const getSunriseSunset = (lat = DEFAULT_LAT, lng = DEFAULT_LNG) => {
+  const now = new Date();
+  // Using Jan 0 (= Dec 31 of prior year) so that Math.floor gives a 1-indexed day-of-year
+  // (day 1 = Jan 1, day 365/366 = Dec 31), as required by the equation-of-time formula.
+  const start = new Date(now.getFullYear(), 0, 0);
+  const dayOfYear = Math.floor((now - start) / 86400000);
+  const B = (2 * Math.PI / 365) * (dayOfYear - 81);
+  const eqTime = 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
+  const decl = 23.45 * Math.sin(B) * (Math.PI / 180);
+  const latRad = lat * (Math.PI / 180);
+  const cosHA = -Math.tan(latRad) * Math.tan(decl);
+  if (cosHA < -1 || cosHA > 1) return null;
+  const HA = Math.acos(cosHA) * (180 / Math.PI);
+  const tzOffset = -now.getTimezoneOffset() / 60;
+  const lngOffset = lng / 15 - tzOffset;
+  const toDate = (hours) => {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    d.setHours(0, 0, 0, 0);
+    d.setTime(d.getTime() + hours * 3600000);
+    return d;
+  };
+  const sunriseH = 12 - HA / 15 - lngOffset - eqTime / 60;
+  const sunsetH  = 12 + HA / 15 - lngOffset - eqTime / 60;
+  return { sunrise: toDate(sunriseH), sunset: toDate(sunsetH) };
+};
 
 // --- Mock Data & Utilities ---
 
@@ -1972,9 +2008,134 @@ const DashboardTile = ({ icon: Icon, title, subtitle, color, onClick, span = "co
   </div>
 );
 
+const SettingsView = ({ onBack, darkModePreference, setDarkModePreference, sunTimes }) => {
+  const options = [
+    { value: 'light', label: 'Hell',          icon: Sun,      desc: 'Immer helles Design' },
+    { value: 'dark',  label: 'Dunkel',         icon: Moon,     desc: 'Immer dunkles Design' },
+    { value: 'auto',  label: 'Automatisch',    icon: Sparkles, desc: 'Dunkel bei Sonnenuntergang, hell bei Sonnenaufgang' },
+  ];
+
+  const fmt = (date) => {
+    if (!date) return '–';
+    return date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  return (
+    <div className="animate-fade-in min-h-screen bg-gray-50">
+      <Header title="Einstellungen" onBack={onBack} />
+
+      <div className="px-4 py-2">
+        <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 px-1">Erscheinungsbild</h2>
+
+        <div className="bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-100">
+          {options.map((opt, idx) => {
+            const IconComp = opt.icon;
+            const isActive = darkModePreference === opt.value;
+            return (
+              <button
+                key={opt.value}
+                onClick={() => setDarkModePreference(opt.value)}
+                className={`w-full flex items-center gap-4 p-4 transition-colors text-left ${
+                  idx < options.length - 1 ? 'border-b border-gray-100' : ''
+                } ${isActive ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}
+              >
+                <div className={`p-2.5 rounded-2xl flex-shrink-0 ${isActive ? 'bg-indigo-100' : 'bg-gray-100'}`}>
+                  <IconComp size={20} className={isActive ? 'text-indigo-600' : 'text-gray-500'} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className={`font-medium ${isActive ? 'text-indigo-600' : 'text-gray-800'}`}>{opt.label}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{opt.desc}</div>
+                </div>
+                {isActive && <Check size={18} className="text-indigo-600 flex-shrink-0" />}
+              </button>
+            );
+          })}
+        </div>
+
+        {darkModePreference === 'auto' && (
+          <div className="mt-4 bg-white rounded-3xl p-4 shadow-sm border border-gray-100">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Heute berechnete Zeiten</h3>
+            <div className="flex gap-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-amber-100 rounded-xl">
+                  <Sun size={16} className="text-amber-500" />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">Sonnenaufgang</div>
+                  <div className="font-semibold text-gray-800">{fmt(sunTimes?.sunrise)}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-indigo-100 rounded-xl">
+                  <Moon size={16} className="text-indigo-500" />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">Sonnenuntergang</div>
+                  <div className="font-semibold text-gray-800">{fmt(sunTimes?.sunset)}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export default function App() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [dayOffset, setDayOffset] = useState(0);
+
+  // ── Dark Mode State ────────────────────────────────────────────
+  const [darkModePreference, setDarkModePreference] = useState(() => {
+    try { return localStorage.getItem('family_app_dark_mode') || 'auto'; } catch { return 'auto'; }
+  });
+  const [sunTimes, setSunTimes] = useState(null);
+
+  // Persist preference
+  useEffect(() => {
+    try { localStorage.setItem('family_app_dark_mode', darkModePreference); } catch {}
+  }, [darkModePreference]);
+
+  // Obtain coordinates once (geolocation or default) and compute sun times.
+  // Location is used solely to calculate accurate local sunrise/sunset times
+  // for automatic dark mode switching; it is never transmitted anywhere.
+  useEffect(() => {
+    const compute = (lat, lng) => setSunTimes(getSunriseSunset(lat, lng));
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => compute(pos.coords.latitude, pos.coords.longitude),
+        () => compute(DEFAULT_LAT, DEFAULT_LNG),
+        { timeout: 5000 }
+      );
+    } else {
+      compute(DEFAULT_LAT, DEFAULT_LNG);
+    }
+  }, []);
+
+  // Apply / remove 'dark' class on <html> every minute
+  useEffect(() => {
+    const applyTheme = () => {
+      let isDark = false;
+      if (darkModePreference === 'dark') {
+        isDark = true;
+      } else if (darkModePreference === 'auto') {
+        const now = new Date();
+        if (sunTimes?.sunrise && sunTimes?.sunset) {
+          isDark = now < sunTimes.sunrise || now >= sunTimes.sunset;
+        } else {
+          // Fallback: dark between 21:00 and 07:00
+          const h = now.getHours();
+          isDark = h >= 21 || h < 7;
+        }
+      }
+      document.documentElement.classList.toggle('dark', isDark);
+    };
+    applyTheme();
+    const interval = setInterval(applyTheme, 60000);
+    return () => clearInterval(interval);
+  }, [darkModePreference, sunTimes]);
+  // ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
@@ -2009,6 +2170,7 @@ export default function App() {
       case 'weather': return <PlaceholderView title="Wetter Details" icon={CloudSun} color="bg-sky-500" onBack={() => setCurrentView('dashboard')} />;
       case 'packing': return <PackingView onBack={() => setCurrentView('dashboard')} />;
       case 'orga': return <PlaceholderView title="Organisation" icon={FolderOpen} color="bg-purple-500" onBack={() => setCurrentView('dashboard')} />;
+      case 'settings': return <SettingsView onBack={() => setCurrentView('dashboard')} darkModePreference={darkModePreference} setDarkModePreference={setDarkModePreference} sunTimes={sunTimes} />;
       default: return null;
     }
   };
@@ -2022,6 +2184,17 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#f0f4f8] font-sans text-gray-900 flex justify-center">
       <div className="w-full max-w-md bg-[#fdfdfd] min-h-screen shadow-2xl overflow-y-auto">
+
+        {/* App top bar with settings button */}
+        <div className="flex items-center justify-end px-5 pt-4">
+          <button
+            onClick={() => setCurrentView('settings')}
+            className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+            aria-label="Einstellungen"
+          >
+            <Settings size={20} className="text-gray-500" />
+          </button>
+        </div>
         
         <DailyOverviewTile 
             offset={dayOffset} 
