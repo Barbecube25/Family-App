@@ -87,42 +87,11 @@ const getDailySummary = (offset) => {
   return { dayName, dateString, summary, weather };
 };
 
-// Brandfetch CDN client ID for store logos
-const BRANDFETCH_KEY = (import.meta.env.VITE_BRANDFETCH_KEY || '').trim();
-const BRANDFETCH_SEARCH_TIMEOUT_MS = 4000;
-if (!BRANDFETCH_KEY) {
-  console.info('[Brandfetch] Kein VITE_BRANDFETCH_KEY gesetzt. Nutze Clearbit-Logos als Standard.');
-}
-const getClearbitLogoUrl = (domain) =>
+// Fetch company logos via Google's favicon service (free, no API key required)
+const getLogoUrl = (domain) =>
   domain
-    ? `https://logo.clearbit.com/${domain}`
+    ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`
     : null;
-
-const searchBrandDomain = async (identifier) => {
-  const query = identifier.trim();
-  if (!query || !BRANDFETCH_KEY) return null;
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), BRANDFETCH_SEARCH_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(
-      `https://api.brandfetch.io/v2/search/${encodeURIComponent(query)}?c=${encodeURIComponent(BRANDFETCH_KEY)}`,
-      { method: 'GET', signal: controller.signal }
-    );
-    if (!response.ok) return null;
-    const data = await response.json();
-    const candidates = Array.isArray(data)
-      ? data
-      : [data?.brand, data?.results?.[0], data?.brands?.[0], data?.data?.[0]];
-    const brandWithDomain = candidates.find((candidate) => typeof candidate?.domain === 'string');
-    return brandWithDomain?.domain ?? null;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-};
 
 // Helper to resolve Store Metadata (Logo or Fallback Style)
 const getStoreMeta = (name, resolvedDomain) => {
@@ -135,46 +104,45 @@ const getStoreMeta = (name, resolvedDomain) => {
     return { type: 'icon', bg: 'bg-gray-800', text: 'text-white', content: <ShoppingBag size={24}/> };
   }
 
-  // 2. Known stores – precise domain for real logo + local brand SVG as offline fallback
+  // 2. Known stores – precise domain for real logo lookup
   const domainMap = {
-    'rewe':       { domain: 'rewe.de',           file: 'rewe.svg',       bg: 'bg-red-100',    text: 'text-red-600' },
-    'aldi':       { domain: 'aldi-sued.de',       file: 'aldi.svg',       bg: 'bg-blue-100',   text: 'text-blue-700' },
-    'lidl':       { domain: 'lidl.de',            file: 'lidl.svg',       bg: 'bg-yellow-100', text: 'text-blue-700' },
-    'dm':         { domain: 'dm.de',              file: 'dm.svg',         bg: 'bg-pink-100',   text: 'text-pink-700' },
-    'rossmann':   { domain: 'rossmann.de',        file: 'rossmann.svg',   bg: 'bg-red-100',    text: 'text-red-700' },
-    'edeka':      { domain: 'edeka.de',           file: 'edeka.svg',      bg: 'bg-yellow-100', text: 'text-yellow-700' },
-    'kaufland':   { domain: 'kaufland.de',        file: 'kaufland.svg',   bg: 'bg-red-100',    text: 'text-red-700' },
-    'netto':      { domain: 'netto-online.de',    file: 'netto.svg',      bg: 'bg-yellow-100', text: 'text-yellow-700' },
-    'ikea':       { domain: 'ikea.com',           file: 'ikea.svg',       bg: 'bg-yellow-100', text: 'text-blue-800' },
-    'obi':        { domain: 'obi.de',             file: 'obi.svg',        bg: 'bg-orange-100', text: 'text-orange-700' },
-    'hornbach':   { domain: 'hornbach.de',        file: 'hornbach.svg',   bg: 'bg-orange-100', text: 'text-orange-700' },
-    'bauhaus':    { domain: 'bauhaus.info',       file: 'bauhaus.svg',    bg: 'bg-red-100',    text: 'text-red-700' },
-    'amazon':     { domain: 'amazon.de',          file: 'amazon.svg',     bg: 'bg-yellow-100', text: 'text-yellow-800' },
-    'zara':       { domain: 'zara.com',           file: 'zara.svg',       bg: 'bg-gray-100',   text: 'text-gray-800' },
-    'h&m':        { domain: 'hm.com',             file: 'hm.svg',         bg: 'bg-red-100',    text: 'text-red-700' },
-    'douglas':    { domain: 'douglas.de',         file: 'douglas.svg',    bg: 'bg-purple-100', text: 'text-purple-700' },
-    'mediamarkt': { domain: 'mediamarkt.de',      file: 'mediamarkt.svg', bg: 'bg-red-100',    text: 'text-red-700' },
-    'saturn':     { domain: 'saturn.de',          file: 'saturn.svg',     bg: 'bg-blue-100',   text: 'text-blue-700' },
-    'penny':      { domain: 'penny.de',           file: 'penny.svg',      bg: 'bg-red-100',    text: 'text-red-700' },
-    'norma':      { domain: 'norma-online.de',    file: 'norma.svg',      bg: 'bg-red-100',    text: 'text-red-700' },
-    'action':     { domain: 'action.com',         file: 'action.svg',     bg: 'bg-red-100',    text: 'text-red-700' },
-    'tedi':       { domain: 'tedi.eu',            file: 'tedi.svg',       bg: 'bg-blue-100',   text: 'text-blue-700' },
-    'muller':     { domain: 'muellerltd.de',      file: 'mueller.svg',    bg: 'bg-purple-100', text: 'text-purple-700' },
-    'metro':      { domain: 'metro.de',           file: 'metro.svg',      bg: 'bg-blue-100',   text: 'text-blue-700' },
-    'apple':      { domain: 'apple.com',          file: 'apple.svg',      bg: 'bg-gray-100',   text: 'text-gray-800' },
-    'nike':       { domain: 'nike.com',           file: 'nike.svg',       bg: 'bg-gray-100',   text: 'text-gray-800' },
-    'adidas':     { domain: 'adidas.de',          file: 'adidas.svg',     bg: 'bg-gray-100',   text: 'text-gray-800' },
-    'zalando':    { domain: 'zalando.de',         file: 'zalando.svg',    bg: 'bg-orange-100', text: 'text-orange-700' },
-    'otto':       { domain: 'otto.de',            file: 'otto.svg',       bg: 'bg-red-100',    text: 'text-red-700' },
-    'deichmann':  { domain: 'deichmann.com',      file: 'deichmann.svg',  bg: 'bg-red-100',    text: 'text-red-700' },
+    'rewe':       { domain: 'rewe.de',           bg: 'bg-red-100',    text: 'text-red-600' },
+    'aldi':       { domain: 'aldi-sued.de',       bg: 'bg-blue-100',   text: 'text-blue-700' },
+    'lidl':       { domain: 'lidl.de',            bg: 'bg-yellow-100', text: 'text-blue-700' },
+    'dm':         { domain: 'dm.de',              bg: 'bg-pink-100',   text: 'text-pink-700' },
+    'rossmann':   { domain: 'rossmann.de',        bg: 'bg-red-100',    text: 'text-red-700' },
+    'edeka':      { domain: 'edeka.de',           bg: 'bg-yellow-100', text: 'text-yellow-700' },
+    'kaufland':   { domain: 'kaufland.de',        bg: 'bg-red-100',    text: 'text-red-700' },
+    'netto':      { domain: 'netto-online.de',    bg: 'bg-yellow-100', text: 'text-yellow-700' },
+    'ikea':       { domain: 'ikea.com',           bg: 'bg-yellow-100', text: 'text-blue-800' },
+    'obi':        { domain: 'obi.de',             bg: 'bg-orange-100', text: 'text-orange-700' },
+    'hornbach':   { domain: 'hornbach.de',        bg: 'bg-orange-100', text: 'text-orange-700' },
+    'bauhaus':    { domain: 'bauhaus.info',       bg: 'bg-red-100',    text: 'text-red-700' },
+    'amazon':     { domain: 'amazon.de',          bg: 'bg-yellow-100', text: 'text-yellow-800' },
+    'zara':       { domain: 'zara.com',           bg: 'bg-gray-100',   text: 'text-gray-800' },
+    'h&m':        { domain: 'hm.com',             bg: 'bg-red-100',    text: 'text-red-700' },
+    'douglas':    { domain: 'douglas.de',         bg: 'bg-purple-100', text: 'text-purple-700' },
+    'mediamarkt': { domain: 'mediamarkt.de',      bg: 'bg-red-100',    text: 'text-red-700' },
+    'saturn':     { domain: 'saturn.de',          bg: 'bg-blue-100',   text: 'text-blue-700' },
+    'penny':      { domain: 'penny.de',           bg: 'bg-red-100',    text: 'text-red-700' },
+    'norma':      { domain: 'norma-online.de',    bg: 'bg-red-100',    text: 'text-red-700' },
+    'action':     { domain: 'action.com',         bg: 'bg-red-100',    text: 'text-red-700' },
+    'tedi':       { domain: 'tedi.eu',            bg: 'bg-blue-100',   text: 'text-blue-700' },
+    'muller':     { domain: 'muellerltd.de',      bg: 'bg-purple-100', text: 'text-purple-700' },
+    'metro':      { domain: 'metro.de',           bg: 'bg-blue-100',   text: 'text-blue-700' },
+    'apple':      { domain: 'apple.com',          bg: 'bg-gray-100',   text: 'text-gray-800' },
+    'nike':       { domain: 'nike.com',           bg: 'bg-gray-100',   text: 'text-gray-800' },
+    'adidas':     { domain: 'adidas.de',          bg: 'bg-gray-100',   text: 'text-gray-800' },
+    'zalando':    { domain: 'zalando.de',         bg: 'bg-orange-100', text: 'text-orange-700' },
+    'otto':       { domain: 'otto.de',            bg: 'bg-red-100',    text: 'text-red-700' },
+    'deichmann':  { domain: 'deichmann.com',      bg: 'bg-red-100',    text: 'text-red-700' },
   };
 
   for (const [key, meta] of Object.entries(domainMap)) {
     if (nNorm.includes(key) || n.includes(key)) {
       return {
         type: 'logo',
-        src: getClearbitLogoUrl(resolvedDomain || meta.domain),
-        localSrc: `/logos/${meta.file}`,
+        src: getLogoUrl(resolvedDomain || meta.domain),
         fallbackLetter: name.charAt(0).toUpperCase(),
         bg: meta.bg,
         text: meta.text,
@@ -182,24 +150,12 @@ const getStoreMeta = (name, resolvedDomain) => {
     }
   }
 
-  // 3. Newly created / unknown stores – use Brandfetch domain if available, else auto-guess
-  if (resolvedDomain) {
-    return {
-      type: 'logo',
-      src: getClearbitLogoUrl(resolvedDomain),
-      fallbackLetter: name.charAt(0).toUpperCase(),
-      bg: 'bg-indigo-100',
-      text: 'text-indigo-600',
-    };
-  }
-
-  const guessedDomain = nNorm
-    .replace(/[^a-z0-9\s]/g, '').trim()
-    .split(/\s+/)[0] + '.de';
+  // 3. Newly created / unknown stores – use provided domain or guess from name
+  const domain = resolvedDomain || (nNorm.replace(/[^a-z0-9\s]/g, '').trim().split(/\s+/)[0] + '.de');
 
   return {
     type: 'logo',
-    src: getClearbitLogoUrl(guessedDomain),
+    src: getLogoUrl(domain),
     fallbackLetter: name.charAt(0).toUpperCase(),
     bg: 'bg-indigo-100',
     text: 'text-indigo-600',
@@ -209,26 +165,21 @@ const getStoreMeta = (name, resolvedDomain) => {
 // Component to render the Logo or the Fallback safely
 const StoreIcon = ({ name, brandDomain, className, size = "w-12 h-12" }) => {
   const meta = getStoreMeta(name, brandDomain);
-  // attempt: 0 = try Brandfetch, 1 = try local logo, 2 = show letter
-  const [attempt, setAttempt] = useState(0);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    setAttempt(0);
+    setFailed(false);
   }, [name, brandDomain]);
 
-  if (meta.type === 'logo') {
-    const logoSources = [meta.src, meta.localSrc].filter(Boolean);
-    const src = logoSources[attempt];
-    if (src) {
-      return (
-        <img
-          src={src}
-          alt={name}
-          className={`${size} ${className} object-contain rounded-xl bg-white p-1`}
-          onError={() => setAttempt((prev) => prev + 1)}
-        />
-      );
-    }
+  if (meta.type === 'logo' && meta.src && !failed) {
+    return (
+      <img
+        src={meta.src}
+        alt={name}
+        className={`${size} ${className} object-contain rounded-xl bg-white p-1`}
+        onError={() => setFailed(true)}
+      />
+    );
   }
 
   // Letter / icon fallback
@@ -340,7 +291,6 @@ const ShoppingView = ({ onBack }) => {
   const [newItemInput, setNewItemInput] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newListName, setNewListName] = useState('');
-  const [isCreatingList, setIsCreatingList] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [moveItemState, setMoveItemState] = useState(null); // { id, sourceId }
   const [selectedItemKeys, setSelectedItemKeys] = useState([]);
@@ -353,25 +303,18 @@ const ShoppingView = ({ onBack }) => {
     setNewListName('');
   };
 
-  const addNewList = async () => {
+  const addNewList = () => {
     const trimmedName = newListName.trim();
-    if (!trimmedName || isCreatingList) return;
-    setIsCreatingList(true);
-    try {
-      const brandDomain = await searchBrandDomain(trimmedName);
-      const newList = {
-        id: crypto.randomUUID(),
-        name: trimmedName,
-        fixed: false,
-        items: [],
-        ...(brandDomain ? { brandDomain } : {})
-      };
-      setLists(prev => [...prev, newList]);
-      setActiveListId(newList.id);
-      closeCreateModal();
-    } finally {
-      setIsCreatingList(false);
-    }
+    if (!trimmedName) return;
+    const newList = {
+      id: crypto.randomUUID(),
+      name: trimmedName,
+      fixed: false,
+      items: [],
+    };
+    setLists(prev => [...prev, newList]);
+    setActiveListId(newList.id);
+    closeCreateModal();
   };
 
   const deleteList = (id) => {
@@ -721,10 +664,10 @@ const ShoppingView = ({ onBack }) => {
                  </button>
                  <button 
                    onClick={addNewList}
-                   disabled={!newListName.trim() || isCreatingList}
+                   disabled={!newListName.trim()}
                    className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-medium shadow-lg shadow-indigo-200 disabled:opacity-40 disabled:shadow-none"
                  >
-                   {isCreatingList ? 'Suche...' : 'Erstellen'}
+                   Erstellen
                  </button>
               </div>
            </div>
