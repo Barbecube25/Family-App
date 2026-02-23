@@ -2125,6 +2125,8 @@ const INITIAL_PACKAGES = {
 };
 
 const PackagesView = ({ onBack }) => {
+  const LONG_PRESS_MS = 450;
+
   const [packages, setPackages] = useState(() => {
     try {
       const saved = localStorage.getItem('family_app_packages');
@@ -2142,6 +2144,20 @@ const PackagesView = ({ onBack }) => {
 
   const [inputValue, setInputValue] = useState('');
   const [pendingPackage, setPendingPackage] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [contextItem, setContextItem] = useState(null); // { categoryId, item }
+  const longPressRef = useRef(null);
+
+  const stopLongPress = () => {
+    if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; }
+  };
+
+  const startLongPress = (categoryId, item) => {
+    stopLongPress();
+    longPressRef.current = setTimeout(() => {
+      setContextItem({ categoryId, item });
+    }, LONG_PRESS_MS);
+  };
 
   const handleAdd = () => {
     const trimmed = inputValue.trim();
@@ -2165,6 +2181,96 @@ const PackagesView = ({ onBack }) => {
       [categoryId]: prev[categoryId].filter(i => i.id !== itemId),
     }));
   };
+
+  const moveItem = (fromCategoryId, itemId, toCategoryId) => {
+    const item = packages[fromCategoryId].find(i => i.id === itemId);
+    if (!item) return;
+    if (toCategoryId === 'abholbereit') {
+      try {
+        const existing = JSON.parse(localStorage.getItem('family_app_daily_tasks') || '[]');
+        if (!existing.some(t => t.packageItemId === itemId)) {
+          const newTask = {
+            id: crypto.randomUUID(),
+            text: `📦 ${item.text} abholen`,
+            assign: null,
+            done: false,
+            packageItemId: itemId,
+          };
+          localStorage.setItem('family_app_daily_tasks', JSON.stringify([...existing, newTask]));
+        }
+      } catch {}
+    }
+    setPackages(prev => ({
+      ...prev,
+      [fromCategoryId]: prev[fromCategoryId].filter(i => i.id !== itemId),
+      [toCategoryId]: [...prev[toCategoryId], item],
+    }));
+    setContextItem(null);
+  };
+
+  // Detail view for selected category
+  if (selectedCategory) {
+    const cat = PACKAGE_CATEGORIES.find(c => c.id === selectedCategory);
+    const items = packages[selectedCategory];
+    return (
+      <div className="animate-fade-in min-h-screen bg-gray-50 flex flex-col">
+        <Header title={cat.label} onBack={() => setSelectedCategory(null)} />
+        <div className="px-4 pt-2 pb-24 space-y-2">
+          {items.length === 0 ? (
+            <p className="text-center text-gray-400 italic mt-8">Keine Pakete</p>
+          ) : (
+            items.map(item => (
+              <div
+                key={item.id}
+                className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex items-center justify-between gap-2 select-none"
+                onTouchStart={() => startLongPress(selectedCategory, item)}
+                onTouchEnd={stopLongPress}
+                onTouchMove={stopLongPress}
+                onMouseDown={() => startLongPress(selectedCategory, item)}
+                onMouseUp={stopLongPress}
+                onMouseLeave={stopLongPress}
+              >
+                <span className="text-sm text-gray-700 flex-1">{item.text}</span>
+                <button
+                  onMouseDown={e => e.stopPropagation()}
+                  onClick={() => deleteItem(selectedCategory, item.id)}
+                  className="p-1 text-gray-300 hover:text-red-400 rounded-full transition-colors shrink-0"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+        {/* Long-press context menu: change status */}
+        {contextItem && (
+          <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
+            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-20 sm:mb-0">
+              <h3 className="text-lg font-semibold mb-1">Status ändern</h3>
+              <p className="text-sm text-gray-500 mb-4 truncate">&bdquo;{contextItem.item.text}&ldquo;</p>
+              <div className="grid grid-cols-2 gap-3">
+                {PACKAGE_CATEGORIES.filter(c => c.id !== contextItem.categoryId).map(cat => (
+                  <button
+                    key={cat.id}
+                    onClick={() => moveItem(contextItem.categoryId, contextItem.item.id, cat.id)}
+                    className={`py-3 px-4 rounded-2xl text-white font-medium text-sm shadow-md active:scale-95 transition-transform ${cat.color}`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => setContextItem(null)}
+                className="w-full mt-4 py-3 text-gray-500 hover:bg-gray-100 rounded-xl font-medium text-sm"
+              >
+                Abbrechen
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in min-h-screen bg-gray-50 flex flex-col">
@@ -2190,31 +2296,24 @@ const PackagesView = ({ onBack }) => {
         </div>
       </div>
 
-      {/* Category tiles */}
+      {/* Category tiles – show count */}
       <div className="px-4 grid grid-cols-2 gap-3 pb-24">
         {PACKAGE_CATEGORIES.map(cat => (
-          <div key={cat.id} className="relative overflow-hidden bg-white rounded-3xl shadow-sm border border-gray-100 flex flex-col min-h-36 p-4">
+          <div
+            key={cat.id}
+            onClick={() => setSelectedCategory(cat.id)}
+            className="relative overflow-hidden bg-white rounded-3xl shadow-sm border border-gray-100 flex flex-col min-h-36 p-4 cursor-pointer hover:bg-gray-50 transition-colors active:scale-95"
+          >
             <div className={`absolute top-0 right-0 p-16 rounded-full opacity-5 translate-x-6 -translate-y-6 ${cat.color}`}></div>
             <div className="flex items-center gap-2 mb-3 z-10">
               <div className={`w-3 h-3 rounded-full ${cat.color}`}></div>
               <span className={`text-sm font-semibold ${cat.textColor}`}>{cat.label}</span>
             </div>
-            <div className="flex-1 space-y-1 z-10">
-              {packages[cat.id].length === 0 ? (
-                <p className="text-xs text-gray-300 italic">Keine Pakete</p>
-              ) : (
-                packages[cat.id].map(item => (
-                  <div key={item.id} className="group flex items-center justify-between gap-1">
-                    <span className="text-sm text-gray-700 leading-snug break-words min-w-0 flex-1">{item.text}</span>
-                    <button
-                      onClick={() => deleteItem(cat.id, item.id)}
-                      className="p-1 text-gray-300 hover:text-red-400 rounded-full transition-colors opacity-0 group-hover:opacity-100 shrink-0"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                ))
-              )}
+            <div className="flex-1 flex items-end z-10">
+              <span className="text-3xl font-bold text-gray-800">{packages[cat.id].length}</span>
+              <span className="ml-2 text-sm text-gray-500 mb-1">
+                {packages[cat.id].length === 1 ? 'Paket' : 'Pakete'}
+              </span>
             </div>
           </div>
         ))}
