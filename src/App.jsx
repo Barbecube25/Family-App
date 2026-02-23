@@ -2110,6 +2110,146 @@ const PackingView = ({ onBack }) => {
   );
 };
 
+const PACKAGE_CATEGORIES = [
+  { id: 'geplant',     label: 'Geplant',      color: 'bg-blue-400',   textColor: 'text-blue-600' },
+  { id: 'bestellt',    label: 'Bestellt',     color: 'bg-amber-400',  textColor: 'text-amber-600' },
+  { id: 'unterwegs',   label: 'Unterwegs',    color: 'bg-orange-400', textColor: 'text-orange-600' },
+  { id: 'abholbereit', label: 'Abholbereit',  color: 'bg-green-500',  textColor: 'text-green-600' },
+];
+
+const INITIAL_PACKAGES = {
+  geplant: [],
+  bestellt: [],
+  unterwegs: [],
+  abholbereit: [],
+};
+
+const PackagesView = ({ onBack }) => {
+  const [packages, setPackages] = useState(() => {
+    try {
+      const saved = localStorage.getItem('family_app_packages');
+      return saved ? JSON.parse(saved) : INITIAL_PACKAGES;
+    } catch {
+      return INITIAL_PACKAGES;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('family_app_packages', JSON.stringify(packages));
+    } catch {}
+  }, [packages]);
+
+  const [inputValue, setInputValue] = useState('');
+  const [pendingPackage, setPendingPackage] = useState(null);
+
+  const handleAdd = () => {
+    const trimmed = inputValue.trim();
+    if (!trimmed) return;
+    setPendingPackage(trimmed);
+  };
+
+  const confirmCategory = (categoryId) => {
+    if (!pendingPackage) return;
+    setPackages(prev => ({
+      ...prev,
+      [categoryId]: [...prev[categoryId], { id: crypto.randomUUID(), text: pendingPackage }],
+    }));
+    setInputValue('');
+    setPendingPackage(null);
+  };
+
+  const deleteItem = (categoryId, itemId) => {
+    setPackages(prev => ({
+      ...prev,
+      [categoryId]: prev[categoryId].filter(i => i.id !== itemId),
+    }));
+  };
+
+  return (
+    <div className="animate-fade-in min-h-screen bg-gray-50 flex flex-col">
+      <Header title="Paketverfolgung" onBack={onBack} />
+
+      {/* Input field */}
+      <div className="px-4 pt-2 pb-4">
+        <div className="flex gap-2 bg-white p-1 rounded-full shadow-sm border border-gray-100">
+          <input
+            value={inputValue}
+            onChange={e => setInputValue(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAdd()}
+            placeholder="Paket eingeben..."
+            className="flex-1 bg-transparent px-5 py-3 outline-none text-gray-800 placeholder-gray-400 text-sm"
+          />
+          <button
+            onClick={handleAdd}
+            disabled={!inputValue.trim()}
+            className="w-11 h-11 bg-amber-500 rounded-full text-white flex items-center justify-center shadow-md active:scale-95 hover:bg-amber-600 transition-colors disabled:opacity-40"
+          >
+            <Plus size={20} />
+          </button>
+        </div>
+      </div>
+
+      {/* Category tiles */}
+      <div className="px-4 grid grid-cols-2 gap-3 pb-24">
+        {PACKAGE_CATEGORIES.map(cat => (
+          <div key={cat.id} className="relative overflow-hidden bg-white rounded-3xl shadow-sm border border-gray-100 flex flex-col min-h-36 p-4">
+            <div className={`absolute top-0 right-0 p-16 rounded-full opacity-5 translate-x-6 -translate-y-6 ${cat.color}`}></div>
+            <div className="flex items-center gap-2 mb-3 z-10">
+              <div className={`w-3 h-3 rounded-full ${cat.color}`}></div>
+              <span className={`text-sm font-semibold ${cat.textColor}`}>{cat.label}</span>
+            </div>
+            <div className="flex-1 space-y-1 z-10">
+              {packages[cat.id].length === 0 ? (
+                <p className="text-xs text-gray-300 italic">Keine Pakete</p>
+              ) : (
+                packages[cat.id].map(item => (
+                  <div key={item.id} className="group flex items-center justify-between gap-1">
+                    <span className="text-sm text-gray-700 leading-snug break-words min-w-0 flex-1">{item.text}</span>
+                    <button
+                      onClick={() => deleteItem(cat.id, item.id)}
+                      className="p-1 text-gray-300 hover:text-red-400 rounded-full transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Category selection popup */}
+      {pendingPackage && (
+        <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-20 sm:mb-0">
+            <h3 className="text-lg font-semibold mb-1">Wo soll es hin?</h3>
+            <p className="text-sm text-gray-500 mb-4 truncate">&bdquo;{pendingPackage}&ldquo;</p>
+            <div className="grid grid-cols-2 gap-3">
+              {PACKAGE_CATEGORIES.map(cat => (
+                <button
+                  key={cat.id}
+                  onClick={() => confirmCategory(cat.id)}
+                  className={`py-3 px-4 rounded-2xl text-white font-medium text-sm shadow-md active:scale-95 transition-transform ${cat.color}`}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setPendingPackage(null)}
+              className="w-full mt-4 py-3 text-gray-500 hover:bg-gray-100 rounded-xl font-medium text-sm"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const DashboardTile = ({ icon: Icon, title, subtitle, color, onClick, span = "col-span-1" }) => (
   <div 
     onClick={onClick}
@@ -2289,7 +2429,7 @@ export default function App() {
       case 'trash': return <TrashView onBack={() => setCurrentView('dashboard')} />;
       case 'calendar': return <CalendarView onBack={() => setCurrentView('dashboard')} />;
       case 'tasks': return <TaskView onBack={() => setCurrentView('dashboard')} onNavigateToShopping={(listId) => { setShoppingInitialListId(listId); setCurrentView('shopping'); }} />;
-      case 'packages': return <PlaceholderView title="Paketverfolgung" icon={Package} color="bg-amber-500" onBack={() => setCurrentView('dashboard')} />;
+      case 'packages': return <PackagesView onBack={() => setCurrentView('dashboard')} />;
       case 'weather': return <PlaceholderView title="Wetter Details" icon={CloudSun} color="bg-sky-500" onBack={() => setCurrentView('dashboard')} />;
       case 'packing': return <PackingView onBack={() => setCurrentView('dashboard')} />;
       case 'orga': return <PlaceholderView title="Organisation" icon={FolderOpen} color="bg-purple-500" onBack={() => setCurrentView('dashboard')} />;
