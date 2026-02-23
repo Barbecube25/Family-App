@@ -150,11 +150,21 @@ const getNextTrashSummary = () => {
   return `${label}: ${type}`;
 };
 
+const getDaysUntil = (dates) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  for (const [y, m, d] of dates) {
+    const dt = new Date(y, m, d);
+    if (dt >= today) return Math.round((dt - today) / 86400000);
+  }
+  return null;
+};
+
 const TRASH_SCHEDULE = [
-  { type: 'Restmüll', color: 'bg-gray-700', date: getNextWasteDate(BEZIRK2_WASTE_DATES.restmuell) },
-  { type: 'Bio', color: 'bg-green-700', date: getNextWasteDate(BEZIRK2_WASTE_DATES.bio) },
-  { type: 'Papier', color: 'bg-blue-600', date: getNextWasteDate(BEZIRK2_WASTE_DATES.altpapier) },
-  { type: 'Gelber Sack', color: 'bg-yellow-500', date: getNextWasteDate(BEZIRK2_WASTE_DATES.gelbeTonne) },
+  { type: 'Restmüll', color: 'bg-gray-700', date: getNextWasteDate(BEZIRK2_WASTE_DATES.restmuell), dates: BEZIRK2_WASTE_DATES.restmuell },
+  { type: 'Bio', color: 'bg-green-700', date: getNextWasteDate(BEZIRK2_WASTE_DATES.bio), dates: BEZIRK2_WASTE_DATES.bio },
+  { type: 'Papier', color: 'bg-blue-600', date: getNextWasteDate(BEZIRK2_WASTE_DATES.altpapier), dates: BEZIRK2_WASTE_DATES.altpapier },
+  { type: 'Gelber Sack', color: 'bg-yellow-500', date: getNextWasteDate(BEZIRK2_WASTE_DATES.gelbeTonne), dates: BEZIRK2_WASTE_DATES.gelbeTonne },
 ];
 
 const PACKING_COLORS = [
@@ -918,29 +928,66 @@ const FinanceView = ({ onBack }) => (
   </div>
 );
 
-const TrashView = ({ onBack }) => (
-  <div className="animate-fade-in">
-    <Header title="Müllabfuhr" onBack={onBack} />
-    <div className="px-4 grid gap-4">
-      {TRASH_SCHEDULE.map((item, idx) => (
-        <div key={idx} className="bg-white p-5 rounded-2xl flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white ${item.color}`}>
-              <Trash2 size={24} />
-            </div>
-            <div>
-              <div className="font-medium text-lg">{item.type}</div>
-              <div className="text-gray-500 text-sm">Nächste Abholung</div>
-            </div>
-          </div>
-          <div className="bg-gray-100 px-4 py-2 rounded-lg font-semibold text-gray-700">
-            {item.date}
-          </div>
+const TrashView = ({ onBack }) => {
+  const [selectedType, setSelectedType] = useState(null);
+
+  if (selectedType) {
+    const item = TRASH_SCHEDULE.find(s => s.type === selectedType);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const futureDates = item.dates
+      .map(([y, m, d]) => new Date(y, m, d))
+      .filter(dt => dt >= today);
+    return (
+      <div className="animate-fade-in">
+        <Header title={selectedType} onBack={() => setSelectedType(null)} />
+        <div className="px-4 grid gap-3">
+          {futureDates.map((dt, idx) => {
+            const dd = String(dt.getDate()).padStart(2, '0');
+            const mm = String(dt.getMonth() + 1).padStart(2, '0');
+            const diff = Math.round((dt - today) / 86400000);
+            const daysLabel = diff === 0 ? 'Heute' : diff === 1 ? 'Morgen' : `in ${diff} Tagen`;
+            return (
+              <div key={idx} className="bg-white p-4 rounded-2xl flex items-center justify-between shadow-sm border border-gray-100">
+                <div className="font-medium">{WEEKDAY_ABBR[dt.getDay()]}, {dd}.{mm}.{dt.getFullYear()}</div>
+                <div className="text-sm text-gray-500">{daysLabel}</div>
+              </div>
+            );
+          })}
         </div>
-      ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="animate-fade-in">
+      <Header title="Müllabfuhr" onBack={onBack} />
+      <div className="px-4 grid grid-cols-2 gap-3">
+        {TRASH_SCHEDULE.map((item, idx) => {
+          const days = getDaysUntil(item.dates);
+          const daysLabel = days === null ? '—' : days === 0 ? 'Heute' : days === 1 ? 'Morgen' : `in ${days} Tagen`;
+          return (
+            <div
+              key={idx}
+              onClick={() => setSelectedType(item.type)}
+              className="relative overflow-hidden group p-5 rounded-3xl bg-white hover:bg-gray-50 transition-all duration-300 cursor-pointer shadow-sm hover:shadow-md border border-gray-100 flex flex-col justify-between h-36"
+            >
+              <div className={`absolute top-0 right-0 p-20 rounded-full opacity-5 translate-x-8 -translate-y-8 ${item.color}`}></div>
+              <div className="flex justify-between items-start z-10">
+                <div className={`p-3 rounded-2xl ${item.color} bg-opacity-20 text-gray-800`}>
+                  <Trash2 size={24} className="text-gray-900 opacity-80" />
+                </div>
+              </div>
+              <div className="z-10">
+                <h3 className="text-lg font-medium text-gray-800 leading-tight">{item.type}</h3>
+                <p className="text-sm text-gray-500 mt-1">{item.date} · {daysLabel}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const CalendarView = ({ onBack }) => (
   <div className="animate-fade-in">
