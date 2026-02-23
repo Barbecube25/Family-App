@@ -1058,6 +1058,9 @@ const TaskView = ({ onBack }) => {
   const [dailyInput, setDailyInput] = useState('');
   const [quickAssign, setQuickAssign] = useState(null); // null | 'Michael' | 'Sonja'
   const [moveState, setMoveState] = useState(null); // { id, sourceId: 'daily' | listId }
+  const [editDailyTaskId, setEditDailyTaskId] = useState(null);
+  const [editDailyText, setEditDailyText] = useState('');
+  const [editDailyAssign, setEditDailyAssign] = useState(null);
   const [selectedKeys, setSelectedKeys] = useState([]);
   const [bulkDrag, setBulkDrag] = useState(false);
   const longPressRef = useRef(null);
@@ -1092,6 +1095,12 @@ const TaskView = ({ onBack }) => {
     setDailyTasks(prev => [...prev, { id: crypto.randomUUID(), text: dailyInput.trim(), assign: quickAssign, done: false }]);
     setDailyInput('');
     setQuickAssign(null);
+  };
+
+  const saveDailyTask = () => {
+    if (!editDailyText.trim() || !editDailyTaskId) return;
+    setDailyTasks(prev => prev.map(t => t.id === editDailyTaskId ? { ...t, text: editDailyText.trim(), assign: editDailyAssign } : t));
+    setEditDailyTaskId(null);
   };
 
   const sortedDailyTasks = useMemo(
@@ -1409,6 +1418,12 @@ const TaskView = ({ onBack }) => {
                     )}
                   </div>
                   <button
+                    onClick={(e) => { e.stopPropagation(); setEditDailyTaskId(task.id); setEditDailyText(task.text); setEditDailyAssign(task.assign); }}
+                    className={`p-1.5 text-gray-300 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-all ${task.done ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                  >
+                    <Edit2 size={16} />
+                  </button>
+                  <button
                     onClick={(e) => { e.stopPropagation(); setMoveState({ id: task.id, sourceId: 'daily' }); }}
                     className={`p-1.5 text-gray-300 hover:text-green-500 hover:bg-green-50 rounded-full transition-all ${task.done ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                   >
@@ -1512,6 +1527,51 @@ const TaskView = ({ onBack }) => {
               </button>
               <button onClick={addList} disabled={!modalName.trim()} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-medium shadow-lg shadow-green-200 disabled:opacity-40 disabled:shadow-none">
                 Erstellen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editDailyTaskId && (
+        <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-20 sm:mb-0">
+            <h3 className="text-lg font-semibold mb-4">Aufgabe bearbeiten</h3>
+            <input
+              value={editDailyText}
+              onChange={e => setEditDailyText(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && saveDailyTask()}
+              placeholder="Aufgabe..."
+              className="w-full bg-gray-100 px-4 py-3 rounded-xl outline-none mb-4 focus:ring-2 focus:ring-green-500"
+              autoFocus
+            />
+            <p className="text-xs text-gray-500 mb-2 font-medium">Zuweisen an:</p>
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setEditDailyAssign('Michael')}
+                className={`flex-1 py-2 rounded-xl text-sm font-bold transition-colors ${editDailyAssign === 'Michael' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-blue-100'}`}
+              >
+                Michael
+              </button>
+              <button
+                onClick={() => setEditDailyAssign('Sonja')}
+                className={`flex-1 py-2 rounded-xl text-sm font-bold transition-colors ${editDailyAssign === 'Sonja' ? 'bg-pink-500 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-pink-100'}`}
+              >
+                Sonja
+              </button>
+              <button
+                onClick={() => setEditDailyAssign(null)}
+                className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${editDailyAssign === null ? 'bg-gray-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                Niemand
+              </button>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setEditDailyTaskId(null)} className="flex-1 py-3 text-gray-500 hover:bg-gray-100 rounded-xl font-medium">
+                Abbrechen
+              </button>
+              <button onClick={saveDailyTask} disabled={!editDailyText.trim()} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-medium shadow-lg shadow-green-200 disabled:opacity-40 disabled:shadow-none">
+                Speichern
               </button>
             </div>
           </div>
