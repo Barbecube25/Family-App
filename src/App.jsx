@@ -1162,6 +1162,42 @@ const TaskView = ({ onBack, onNavigateToShopping }) => {
     try { localStorage.setItem('family_app_daily_tasks', JSON.stringify(dailyTasks)); } catch {}
   }, [dailyTasks]);
 
+  // Automatically add a reminder task for each waste type that is due tomorrow
+  useEffect(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+
+    const wasteTypes = [
+      { key: 'restmuell',  label: 'Restmüll',   dates: BEZIRK2_WASTE_DATES.restmuell },
+      { key: 'bio',        label: 'Biotonne',    dates: BEZIRK2_WASTE_DATES.bio },
+      { key: 'altpapier',  label: 'Altpapier',   dates: BEZIRK2_WASTE_DATES.altpapier },
+      { key: 'gelbeTonne', label: 'Gelbe Tonne', dates: BEZIRK2_WASTE_DATES.gelbeTonne },
+    ];
+
+    const tasksToAdd = wasteTypes
+      .filter(({ dates }) => dates.some(([y, m, d]) => new Date(y, m, d).getTime() === tomorrow.getTime()))
+      .map(({ key, label }) => ({ key, label, tomorrowStr }));
+
+    if (tasksToAdd.length > 0) {
+      setDailyTasks(prev => {
+        const newTasks = tasksToAdd
+          .filter(({ key }) => !prev.some(t => t.wasteType === key && t.wasteDate === tomorrowStr))
+          .map(({ key, label }) => ({
+            id: crypto.randomUUID(),
+            text: `🗑️ ${label} rausstellen`,
+            assign: null,
+            done: false,
+            wasteType: key,
+            wasteDate: tomorrowStr,
+          }));
+        return newTasks.length > 0 ? [...prev, ...newTasks] : prev;
+      });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [activeListId, setActiveListId] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editListId, setEditListId] = useState(null);
