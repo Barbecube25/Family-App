@@ -53,12 +53,77 @@ const FINANCE_DATA = {
   ]
 };
 
+// Jülich Bezirk 2 – Abfallkalender 2026
+// Quelle: https://www.juelich.de/lw_resource/datapool/systemfiles/elements/files/86174b29-ceb0-11f0-8dd7-deadb24d5328/live/document/Abfallkalender2026.pdf
 const TRASH_SCHEDULE = [
-  { type: 'Restmüll', color: 'bg-gray-700', date: 'Morgen' },
-  { type: 'Bio', color: 'bg-green-700', date: 'Fr, 27.10.' },
-  { type: 'Papier', color: 'bg-blue-600', date: 'Di, 31.10.' },
-  { type: 'Gelber Sack', color: 'bg-yellow-500', date: 'Do, 02.11.' },
+  {
+    type: 'Restmüll',
+    color: 'bg-gray-700',
+    dates: [
+      '07.01.2026','21.01.2026','04.02.2026','18.02.2026',
+      '04.03.2026','18.03.2026','01.04.2026','15.04.2026',
+      '29.04.2026','13.05.2026','27.05.2026','10.06.2026',
+      '24.06.2026','08.07.2026','22.07.2026','05.08.2026',
+      '19.08.2026','02.09.2026','16.09.2026','30.09.2026',
+      '14.10.2026','28.10.2026','11.11.2026','25.11.2026',
+      '09.12.2026','23.12.2026',
+    ],
+  },
+  {
+    type: 'Bio',
+    color: 'bg-green-700',
+    dates: [
+      // Winter: 14-täglich (Jan–Mär, Nov–Dez)
+      '08.01.2026','22.01.2026','05.02.2026','19.02.2026',
+      '05.03.2026','19.03.2026',
+      // Sommer: wöchentlich (Apr–Okt)
+      '02.04.2026','09.04.2026','16.04.2026','23.04.2026','30.04.2026',
+      '07.05.2026','14.05.2026','21.05.2026','28.05.2026',
+      '04.06.2026','11.06.2026','18.06.2026','25.06.2026',
+      '02.07.2026','09.07.2026','16.07.2026','23.07.2026','30.07.2026',
+      '06.08.2026','13.08.2026','20.08.2026','27.08.2026',
+      '03.09.2026','10.09.2026','17.09.2026','24.09.2026',
+      '01.10.2026','08.10.2026','15.10.2026','22.10.2026','29.10.2026',
+      // Winter: 14-täglich wieder
+      '05.11.2026','19.11.2026',
+      '03.12.2026','17.12.2026','31.12.2026',
+    ],
+  },
+  {
+    type: 'Papier',
+    color: 'bg-blue-600',
+    dates: [
+      '09.01.2026','06.02.2026','06.03.2026','03.04.2026',
+      '01.05.2026','29.05.2026','26.06.2026','24.07.2026',
+      '21.08.2026','18.09.2026','16.10.2026','13.11.2026',
+      '11.12.2026',
+    ],
+  },
+  {
+    type: 'Gelber Sack',
+    color: 'bg-yellow-500',
+    dates: [
+      '23.01.2026','20.02.2026','20.03.2026','17.04.2026',
+      '15.05.2026','12.06.2026','10.07.2026','07.08.2026',
+      '04.09.2026','02.10.2026','30.10.2026','27.11.2026',
+      '28.12.2026',
+    ],
+  },
 ];
+
+const getNextPickupDate = (dates) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dayNames = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+  for (const dateStr of dates) {
+    const [day, month, year] = dateStr.split('.').map(Number);
+    const date = new Date(year, month - 1, day);
+    if (date >= today) {
+      return `${dayNames[date.getDay()]}, ${String(day).padStart(2, '0')}.${String(month).padStart(2, '0')}.`;
+    }
+  }
+  return 'Kein Termin'; // Kalender für das neue Jahr aktualisieren
+};
 
 const PACKING_COLORS = [
   'bg-rose-400', 'bg-indigo-400', 'bg-green-500', 'bg-amber-500',
@@ -837,7 +902,7 @@ const TrashView = ({ onBack }) => (
             </div>
           </div>
           <div className="bg-gray-100 px-4 py-2 rounded-lg font-semibold text-gray-700">
-            {item.date}
+            {getNextPickupDate(item.dates)}
           </div>
         </div>
       ))}
