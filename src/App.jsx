@@ -2117,6 +2117,8 @@ const PACKAGE_CATEGORIES = [
   { id: 'abholbereit', label: 'Abholbereit',  color: 'bg-green-500',  textColor: 'text-green-600' },
 ];
 
+const MONTHS_DE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+
 const INITIAL_PACKAGES = {
   geplant: [],
   bestellt: [],
@@ -2147,7 +2149,7 @@ const PackagesView = ({ onBack }) => {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [contextItem, setContextItem] = useState(null); // { categoryId, item }
   const [showPlannedForm, setShowPlannedForm] = useState(false);
-  const [plannedFormData, setPlannedFormData] = useState({ dateFrom: '', dateTo: '', cost: '' });
+  const [plannedFormData, setPlannedFormData] = useState({ dateType: 'exact', dateFrom: '', dateTo: '', cost: '' });
   const longPressRef = useRef(null);
 
   const stopLongPress = () => {
@@ -2176,13 +2178,18 @@ const PackagesView = ({ onBack }) => {
     setInputValue('');
     setPendingPackage(null);
     setShowPlannedForm(false);
-    setPlannedFormData({ dateFrom: '', dateTo: '', cost: '' });
+    setPlannedFormData({ dateType: 'exact', dateFrom: '', dateTo: '', cost: '' });
   };
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '';
     const parts = dateStr.split('-');
-    if (parts.length !== 3 || parts.some(p => !p)) return dateStr;
+    if (parts.length === 1) return parts[0]; // year only e.g. "2025"
+    if (parts.length === 2) {
+      const [y, m] = parts;
+      const idx = parseInt(m, 10) - 1;
+      return `${(idx >= 0 && idx < 12) ? MONTHS_DE[idx] : m} ${y}`; // month e.g. "März 2025"
+    }
     const [y, m, d] = parts;
     return `${d}.${m}.${y}`;
   };
@@ -2393,23 +2400,67 @@ const PackagesView = ({ onBack }) => {
             <p className="text-sm text-gray-500 mb-4 truncate">&bdquo;{pendingPackage}&ldquo;</p>
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">Datum von</label>
-                <input
-                  type="date"
-                  value={plannedFormData.dateFrom}
-                  onChange={e => setPlannedFormData(prev => ({ ...prev, dateFrom: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-400"
-                />
+                <label className="text-xs font-medium text-gray-500 mb-1 block">Zeitraum</label>
+                <div className="flex rounded-xl overflow-hidden border border-gray-200 text-sm">
+                  {[{ id: 'year', label: 'Jahr' }, { id: 'month', label: 'Monat' }, { id: 'exact', label: 'Datum' }].map(opt => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setPlannedFormData(prev => ({ ...prev, dateType: opt.id, dateFrom: '', dateTo: '' }))}
+                      className={`flex-1 py-2 font-medium transition-colors ${plannedFormData.dateType === opt.id ? 'bg-blue-400 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">Datum bis (optional)</label>
-                <input
-                  type="date"
-                  value={plannedFormData.dateTo}
-                  onChange={e => setPlannedFormData(prev => ({ ...prev, dateTo: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-400"
-                />
-              </div>
+              {plannedFormData.dateType === 'year' && (
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">Jahr</label>
+                  <input
+                    type="number"
+                    min="2000"
+                    max="2100"
+                    value={plannedFormData.dateFrom}
+                    onChange={e => setPlannedFormData(prev => ({ ...prev, dateFrom: e.target.value }))}
+                    placeholder={String(new Date().getFullYear())}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-400"
+                  />
+                </div>
+              )}
+              {plannedFormData.dateType === 'month' && (
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">Monat</label>
+                  <input
+                    type="month"
+                    value={plannedFormData.dateFrom}
+                    onChange={e => setPlannedFormData(prev => ({ ...prev, dateFrom: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-400"
+                  />
+                </div>
+              )}
+              {plannedFormData.dateType === 'exact' && (
+                <>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 mb-1 block">Datum von</label>
+                    <input
+                      type="date"
+                      value={plannedFormData.dateFrom}
+                      onChange={e => setPlannedFormData(prev => ({ ...prev, dateFrom: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 mb-1 block">Datum bis (optional)</label>
+                    <input
+                      type="date"
+                      value={plannedFormData.dateTo}
+                      onChange={e => setPlannedFormData(prev => ({ ...prev, dateTo: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-400"
+                    />
+                  </div>
+                </>
+              )}
               <div>
                 <label className="text-xs font-medium text-gray-500 mb-1 block">Kosten (optional)</label>
                 <div className="relative">
