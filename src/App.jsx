@@ -53,11 +53,108 @@ const FINANCE_DATA = {
   ]
 };
 
+// Abfallkalender 2026 – Bezirk 2
+const BEZIRK2_WASTE_DATES = {
+  restmuell: [
+    [2026,0,2],[2026,0,16],[2026,0,30],
+    [2026,1,13],[2026,1,27],
+    [2026,2,13],[2026,2,27],
+    [2026,3,11],[2026,3,24],
+    [2026,4,8],[2026,4,22],
+    [2026,5,6],[2026,5,19],
+    [2026,6,3],[2026,6,17],[2026,6,31],
+    [2026,7,14],[2026,7,28],
+    [2026,8,11],[2026,8,25],
+    [2026,9,9],[2026,9,23],
+    [2026,10,6],[2026,10,20],
+    [2026,11,4],[2026,11,18],[2026,11,30],
+  ],
+  bio: [
+    [2026,0,5],[2026,0,19],
+    [2026,1,2],[2026,1,17],
+    [2026,2,2],[2026,2,16],[2026,2,30],
+    [2026,3,7],[2026,3,13],[2026,3,20],[2026,3,27],
+    [2026,4,4],[2026,4,11],[2026,4,18],[2026,4,26],
+    [2026,5,1],[2026,5,8],[2026,5,15],[2026,5,22],[2026,5,29],
+    [2026,6,6],[2026,6,13],[2026,6,20],[2026,6,27],
+    [2026,7,3],[2026,7,10],[2026,7,17],[2026,7,24],[2026,7,31],
+    [2026,8,7],[2026,8,14],[2026,8,21],[2026,8,28],
+    [2026,9,5],[2026,9,12],[2026,9,19],[2026,9,26],
+    [2026,10,2],[2026,10,9],[2026,10,16],[2026,10,23],
+    [2026,11,7],[2026,11,21],
+  ],
+  altpapier: [
+    [2026,0,21],
+    [2026,1,19],
+    [2026,2,18],
+    [2026,3,15],
+    [2026,4,13],
+    [2026,5,10],
+    [2026,6,8],
+    [2026,7,5],
+    [2026,8,2],[2026,8,30],
+    [2026,9,28],
+    [2026,10,25],
+    [2026,11,22],
+  ],
+  gelbeTonne: [
+    [2026,0,8],[2026,0,22],
+    [2026,1,5],[2026,1,20],
+    [2026,2,5],[2026,2,19],
+    [2026,3,2],[2026,3,16],[2026,3,30],
+    [2026,4,15],[2026,4,29],
+    [2026,5,11],[2026,5,25],
+    [2026,6,9],[2026,6,23],
+    [2026,7,6],[2026,7,20],
+    [2026,8,3],[2026,8,17],
+    [2026,9,1],[2026,9,15],[2026,9,29],
+    [2026,10,12],[2026,10,26],
+    [2026,11,10],[2026,11,23],
+  ],
+};
+
+const WEEKDAY_ABBR = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+
+const getNextWasteDate = (dates) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  for (const [y, m, d] of dates) {
+    const dt = new Date(y, m, d);
+    if (dt >= today) {
+      if (dt.getTime() === today.getTime()) return 'Heute';
+      if (dt.getTime() === tomorrow.getTime()) return 'Morgen';
+      const dd = String(d).padStart(2, '0');
+      const mm = String(m + 1).padStart(2, '0');
+      return `${WEEKDAY_ABBR[dt.getDay()]}, ${dd}.${mm}.`;
+    }
+  }
+  return '—';
+};
+
+const getNextTrashSummary = () => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const all = [
+    ...BEZIRK2_WASTE_DATES.restmuell.map(([y,m,d]) => ({ dt: new Date(y,m,d), type: 'Restmüll' })),
+    ...BEZIRK2_WASTE_DATES.bio.map(([y,m,d]) => ({ dt: new Date(y,m,d), type: 'Bio' })),
+    ...BEZIRK2_WASTE_DATES.altpapier.map(([y,m,d]) => ({ dt: new Date(y,m,d), type: 'Papier' })),
+    ...BEZIRK2_WASTE_DATES.gelbeTonne.map(([y,m,d]) => ({ dt: new Date(y,m,d), type: 'Gelber Sack' })),
+  ].filter(e => e.dt >= today).sort((a, b) => a.dt - b.dt);
+  if (!all.length) return '—';
+  const { dt, type } = all[0];
+  const label = dt.getTime() === today.getTime() ? 'Heute' : dt.getTime() === tomorrow.getTime() ? 'Morgen' : WEEKDAY_ABBR[dt.getDay()];
+  return `${label}: ${type}`;
+};
+
 const TRASH_SCHEDULE = [
-  { type: 'Restmüll', color: 'bg-gray-700', date: 'Morgen' },
-  { type: 'Bio', color: 'bg-green-700', date: 'Fr, 27.10.' },
-  { type: 'Papier', color: 'bg-blue-600', date: 'Di, 31.10.' },
-  { type: 'Gelber Sack', color: 'bg-yellow-500', date: 'Do, 02.11.' },
+  { type: 'Restmüll', color: 'bg-gray-700', date: getNextWasteDate(BEZIRK2_WASTE_DATES.restmuell) },
+  { type: 'Bio', color: 'bg-green-700', date: getNextWasteDate(BEZIRK2_WASTE_DATES.bio) },
+  { type: 'Papier', color: 'bg-blue-600', date: getNextWasteDate(BEZIRK2_WASTE_DATES.altpapier) },
+  { type: 'Gelber Sack', color: 'bg-yellow-500', date: getNextWasteDate(BEZIRK2_WASTE_DATES.gelbeTonne) },
 ];
 
 const PACKING_COLORS = [
@@ -1325,7 +1422,7 @@ export default function App() {
                 onClick={() => setCurrentView('trash')}
                 icon={Trash2}
                 title="Müll"
-                subtitle="Morgen: Restmüll"
+                subtitle={getNextTrashSummary()}
                 color="bg-gray-600"
             />
 
