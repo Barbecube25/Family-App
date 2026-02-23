@@ -2146,6 +2146,8 @@ const PackagesView = ({ onBack }) => {
   const [pendingPackage, setPendingPackage] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [contextItem, setContextItem] = useState(null); // { categoryId, item }
+  const [showPlannedForm, setShowPlannedForm] = useState(false);
+  const [plannedFormData, setPlannedFormData] = useState({ dateFrom: '', dateTo: '', cost: '' });
   const longPressRef = useRef(null);
 
   const stopLongPress = () => {
@@ -2165,14 +2167,24 @@ const PackagesView = ({ onBack }) => {
     setPendingPackage(trimmed);
   };
 
-  const confirmCategory = (categoryId) => {
+  const confirmCategory = (categoryId, extraData = {}) => {
     if (!pendingPackage) return;
     setPackages(prev => ({
       ...prev,
-      [categoryId]: [...prev[categoryId], { id: crypto.randomUUID(), text: pendingPackage }],
+      [categoryId]: [...prev[categoryId], { id: crypto.randomUUID(), text: pendingPackage, ...extraData }],
     }));
     setInputValue('');
     setPendingPackage(null);
+    setShowPlannedForm(false);
+    setPlannedFormData({ dateFrom: '', dateTo: '', cost: '' });
+  };
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length !== 3 || parts.some(p => !p)) return dateStr;
+    const [y, m, d] = parts;
+    return `${d}.${m}.${y}`;
   };
 
   const deleteItem = (categoryId, itemId) => {
@@ -2230,7 +2242,23 @@ const PackagesView = ({ onBack }) => {
                 onMouseUp={stopLongPress}
                 onMouseLeave={stopLongPress}
               >
-                <span className="text-sm text-gray-700 flex-1">{item.text}</span>
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm text-gray-700">{item.text}</span>
+                  {(item.dateFrom || item.cost != null) && (
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {item.dateFrom && (
+                        <span className="text-xs text-blue-500">
+                          📅 {formatDate(item.dateFrom)}{item.dateTo ? ` – ${formatDate(item.dateTo)}` : ''}
+                        </span>
+                      )}
+                      {item.cost != null && item.cost !== '' && !isNaN(Number(item.cost)) && (
+                        <span className="text-xs text-green-600">
+                          💶 {Number(item.cost).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <button
                   onMouseDown={e => e.stopPropagation()}
                   onClick={() => deleteItem(selectedCategory, item.id)}
@@ -2315,12 +2343,23 @@ const PackagesView = ({ onBack }) => {
                 {packages[cat.id].length === 1 ? 'Paket' : 'Pakete'}
               </span>
             </div>
+            {cat.id === 'geplant' && (() => {
+              const totalCost = packages.geplant.reduce((sum, i) => {
+                const n = Number(i.cost);
+                return sum + (i.cost !== undefined && i.cost !== '' && !isNaN(n) ? n : 0);
+              }, 0);
+              return totalCost > 0 ? (
+                <span className="text-xs text-blue-500 mt-1 z-10">
+                  💶 {totalCost.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
+                </span>
+              ) : null;
+            })()}
           </div>
         ))}
       </div>
 
       {/* Category selection popup */}
-      {pendingPackage && (
+      {pendingPackage && !showPlannedForm && (
         <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
           <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-20 sm:mb-0">
             <h3 className="text-lg font-semibold mb-1">Wo soll es hin?</h3>
@@ -2329,7 +2368,7 @@ const PackagesView = ({ onBack }) => {
               {PACKAGE_CATEGORIES.map(cat => (
                 <button
                   key={cat.id}
-                  onClick={() => confirmCategory(cat.id)}
+                  onClick={() => cat.id === 'geplant' ? setShowPlannedForm(true) : confirmCategory(cat.id)}
                   className={`py-3 px-4 rounded-2xl text-white font-medium text-sm shadow-md active:scale-95 transition-transform ${cat.color}`}
                 >
                   {cat.label}
@@ -2341,6 +2380,72 @@ const PackagesView = ({ onBack }) => {
               className="w-full mt-4 py-3 text-gray-500 hover:bg-gray-100 rounded-xl font-medium text-sm"
             >
               Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Planned details popup */}
+      {pendingPackage && showPlannedForm && (
+        <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-20 sm:mb-0">
+            <h3 className="text-lg font-semibold mb-1">Geplant – Details</h3>
+            <p className="text-sm text-gray-500 mb-4 truncate">&bdquo;{pendingPackage}&ldquo;</p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">Datum von</label>
+                <input
+                  type="date"
+                  value={plannedFormData.dateFrom}
+                  onChange={e => setPlannedFormData(prev => ({ ...prev, dateFrom: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-400"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">Datum bis (optional)</label>
+                <input
+                  type="date"
+                  value={plannedFormData.dateTo}
+                  onChange={e => setPlannedFormData(prev => ({ ...prev, dateTo: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-400"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">Kosten (optional)</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">€</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={plannedFormData.cost}
+                    onChange={e => setPlannedFormData(prev => ({ ...prev, cost: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-full border border-gray-200 rounded-xl pl-7 pr-3 py-2 text-sm outline-none focus:border-blue-400"
+                  />
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                const extraData = {};
+                if (plannedFormData.dateFrom) extraData.dateFrom = plannedFormData.dateFrom;
+                if (plannedFormData.dateTo) extraData.dateTo = plannedFormData.dateTo;
+                if (plannedFormData.cost !== '') {
+                  const parsed = parseFloat(plannedFormData.cost);
+                  if (!isNaN(parsed)) extraData.cost = parsed;
+                }
+                confirmCategory('geplant', extraData);
+              }}
+              className="w-full mt-4 py-3 bg-blue-400 text-white rounded-2xl font-medium text-sm shadow-md active:scale-95 transition-transform"
+            >
+              Speichern
+            </button>
+            <button
+              onClick={() => setShowPlannedForm(false)}
+              className="w-full mt-2 py-3 text-gray-500 hover:bg-gray-100 rounded-xl font-medium text-sm"
+            >
+              Zurück
             </button>
           </div>
         </div>
