@@ -427,7 +427,7 @@ const DailyOverviewTile = ({ offset, setOffset, onWeatherClick }) => {
   );
 };
 
-const ShoppingView = ({ onBack }) => {
+const ShoppingView = ({ onBack, initialListId }) => {
   const LONG_PRESS_DURATION_MS = 450;
   const CLICK_SUPPRESS_DURATION_MS = 350;
   const [lists, setLists] = useState(() => {
@@ -447,7 +447,7 @@ const ShoppingView = ({ onBack }) => {
     }
   }, [lists]);
 
-  const [activeListId, setActiveListId] = useState(INITIAL_SHOPPING_LISTS[0].id);
+  const [activeListId, setActiveListId] = useState(() => initialListId || INITIAL_SHOPPING_LISTS[0].id);
   const [newItemInput, setNewItemInput] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newListName, setNewListName] = useState('');
@@ -458,10 +458,47 @@ const ShoppingView = ({ onBack }) => {
   const longPressTimerRef = useRef(null);
   const suppressClickUntilRef = useRef(0);
   const [draggedListId, setDraggedListId] = useState(null);
+  const [storeLongPressMenuId, setStoreLongPressMenuId] = useState(null);
+  const storeLongPressTimerRef = useRef(null);
+  const suppressStoreClickUntilRef = useRef(0);
 
   const closeCreateModal = () => {
     setShowCreateModal(false);
     setNewListName('');
+  };
+
+  const stopStoreLongPressTimer = () => {
+    if (storeLongPressTimerRef.current) {
+      clearTimeout(storeLongPressTimerRef.current);
+      storeLongPressTimerRef.current = null;
+    }
+  };
+
+  const startStoreLongPress = (listId) => {
+    if (listId === 'general') return;
+    stopStoreLongPressTimer();
+    storeLongPressTimerRef.current = setTimeout(() => {
+      setStoreLongPressMenuId(listId);
+      suppressStoreClickUntilRef.current = Date.now() + CLICK_SUPPRESS_DURATION_MS;
+    }, LONG_PRESS_DURATION_MS);
+  };
+
+  const sendListToTasks = (list) => {
+    try {
+      const existing = JSON.parse(localStorage.getItem('family_app_daily_tasks') || '[]');
+      const alreadyExists = existing.some(t => t.shoppingListId === list.id && !t.done);
+      if (!alreadyExists) {
+        const newTask = {
+          id: crypto.randomUUID(),
+          text: `Heute in ${list.name} einkaufen`,
+          assign: null,
+          done: false,
+          shoppingListId: list.id,
+        };
+        localStorage.setItem('family_app_daily_tasks', JSON.stringify([...existing, newTask]));
+      }
+    } catch {}
+    setStoreLongPressMenuId(null);
   };
 
   const addNewList = () => {
@@ -640,7 +677,13 @@ const ShoppingView = ({ onBack }) => {
             return (
               <button
                 key={list.id}
-                onClick={() => setActiveListId(list.id)}
+                onClick={() => {
+                  if (Date.now() < suppressStoreClickUntilRef.current) return;
+                  setActiveListId(list.id);
+                }}
+                onPointerDown={() => startStoreLongPress(list.id)}
+                onPointerUp={stopStoreLongPressTimer}
+                onPointerLeave={stopStoreLongPressTimer}
                 draggable={list.id !== 'general' && !bulkDragMode}
                 onDragStart={(e) => {
                   if (list.id === 'general' || bulkDragMode) { e.preventDefault(); return; }
@@ -932,6 +975,40 @@ const ShoppingView = ({ onBack }) => {
           </div>
         </div>
       )}
+
+      {storeLongPressMenuId && storeLongPressMenuId !== 'general' && (
+        <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-20 sm:mb-0">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center">
+                <StoreIcon name={lists.find(l => l.id === storeLongPressMenuId)?.name || ''} size="w-10 h-10" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">{lists.find(l => l.id === storeLongPressMenuId)?.name}</h3>
+                <p className="text-sm text-gray-500">Was möchtest du tun?</p>
+              </div>
+            </div>
+            <button
+              onClick={() => sendListToTasks(lists.find(l => l.id === storeLongPressMenuId))}
+              className="w-full flex items-center gap-3 p-4 rounded-2xl hover:bg-indigo-50 transition-colors text-left mb-2"
+            >
+              <div className="w-10 h-10 rounded-2xl bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                <ShoppingCart size={20} className="text-indigo-600" />
+              </div>
+              <div>
+                <div className="font-medium text-gray-800">Als Tagesaufgabe hinzufügen</div>
+                <div className="text-xs text-gray-500">Fügt einen Link in die Tagesaufgaben ein</div>
+              </div>
+            </button>
+            <button
+              onClick={() => setStoreLongPressMenuId(null)}
+              className="w-full py-3 text-gray-500 hover:bg-gray-100 rounded-xl font-medium"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1063,7 +1140,7 @@ const CalendarView = ({ onBack }) => (
   </div>
 );
 
-const TaskView = ({ onBack }) => {
+const TaskView = ({ onBack, onNavigateToShopping }) => {
   const LONG_PRESS_MS = 450;
   const SUPPRESS_MS = 350;
 
@@ -1453,6 +1530,15 @@ const TaskView = ({ onBack }) => {
                       </span>
                     )}
                   </div>
+                  {task.shoppingListId && onNavigateToShopping && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onNavigateToShopping(task.shoppingListId); }}
+                      className="p-1.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-all flex-shrink-0"
+                      title="Zur Einkaufsliste"
+                    >
+                      <ShoppingCart size={16} />
+                    </button>
+                  )}
                   <button
                     onClick={(e) => { e.stopPropagation(); setEditDailyTaskId(task.id); setEditDailyText(task.text); setEditDailyAssign(task.assign); }}
                     className={`p-1.5 text-gray-300 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-all ${task.done ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
@@ -2085,6 +2171,7 @@ const SettingsView = ({ onBack, darkModePreference, setDarkModePreference, sunTi
 export default function App() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [dayOffset, setDayOffset] = useState(0);
+  const [shoppingInitialListId, setShoppingInitialListId] = useState(null);
 
   // ── Dark Mode State ────────────────────────────────────────────
   const [darkModePreference, setDarkModePreference] = useState(() => {
@@ -2161,11 +2248,11 @@ export default function App() {
   
   const renderView = () => {
     switch(currentView) {
-      case 'shopping': return <ShoppingView onBack={() => setCurrentView('dashboard')} />;
+      case 'shopping': return <ShoppingView onBack={() => { setShoppingInitialListId(null); setCurrentView('dashboard'); }} initialListId={shoppingInitialListId} />;
       case 'finance': return <FinanceView onBack={() => setCurrentView('dashboard')} />;
       case 'trash': return <TrashView onBack={() => setCurrentView('dashboard')} />;
       case 'calendar': return <CalendarView onBack={() => setCurrentView('dashboard')} />;
-      case 'tasks': return <TaskView onBack={() => setCurrentView('dashboard')} />;
+      case 'tasks': return <TaskView onBack={() => setCurrentView('dashboard')} onNavigateToShopping={(listId) => { setShoppingInitialListId(listId); setCurrentView('shopping'); }} />;
       case 'packages': return <PlaceholderView title="Paketverfolgung" icon={Package} color="bg-amber-500" onBack={() => setCurrentView('dashboard')} />;
       case 'weather': return <PlaceholderView title="Wetter Details" icon={CloudSun} color="bg-sky-500" onBack={() => setCurrentView('dashboard')} />;
       case 'packing': return <PackingView onBack={() => setCurrentView('dashboard')} />;
