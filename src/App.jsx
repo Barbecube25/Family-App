@@ -1839,6 +1839,284 @@ const PlaceholderView = ({ title, icon: Icon, onBack, color }) => (
   </div>
 );
 
+const ORGA_COLORS = [
+  'bg-purple-400', 'bg-violet-400', 'bg-fuchsia-400', 'bg-pink-400',
+  'bg-indigo-400', 'bg-blue-400', 'bg-teal-500', 'bg-cyan-400',
+];
+
+const INITIAL_ORGA_LISTS = [];
+
+const OrgaView = ({ onBack }) => {
+  const [lists, setLists] = useState(() => {
+    try {
+      const saved = localStorage.getItem('family_app_orga_lists');
+      return saved ? JSON.parse(saved) : INITIAL_ORGA_LISTS;
+    } catch {
+      return INITIAL_ORGA_LISTS;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('family_app_orga_lists', JSON.stringify(lists));
+    } catch {}
+  }, [lists]);
+
+  const [activeListId, setActiveListId] = useState(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editListId, setEditListId] = useState(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [modalName, setModalName] = useState('');
+  const [newItemInput, setNewItemInput] = useState('');
+
+  const addList = () => {
+    const trimmed = modalName.trim();
+    if (!trimmed) return;
+    const newList = {
+      id: crypto.randomUUID(),
+      name: trimmed,
+      color: ORGA_COLORS[lists.length % ORGA_COLORS.length],
+      items: [],
+    };
+    setLists(prev => [...prev, newList]);
+    setShowCreateModal(false);
+    setModalName('');
+  };
+
+  const saveListName = () => {
+    const trimmed = modalName.trim();
+    if (!trimmed || !editListId) return;
+    setLists(prev => prev.map(l => l.id === editListId ? { ...l, name: trimmed } : l));
+    setEditListId(null);
+    setModalName('');
+  };
+
+  const confirmDeleteList = () => {
+    setLists(prev => prev.filter(l => l.id !== deleteConfirmId));
+    if (activeListId === deleteConfirmId) setActiveListId(null);
+    setDeleteConfirmId(null);
+  };
+
+  const toggleItem = (itemId) => {
+    setLists(prev => prev.map(list => {
+      if (list.id !== activeListId) return list;
+      return { ...list, items: list.items.map(i => i.id === itemId ? { ...i, done: !i.done } : i) };
+    }));
+  };
+
+  const addItem = () => {
+    if (!newItemInput.trim()) return;
+    setLists(prev => prev.map(list => {
+      if (list.id !== activeListId) return list;
+      return { ...list, items: [...list.items, { id: Date.now(), text: newItemInput.trim(), done: false }] };
+    }));
+    setNewItemInput('');
+  };
+
+  const deleteItem = (e, itemId) => {
+    e.stopPropagation();
+    setLists(prev => prev.map(list => {
+      if (list.id !== activeListId) return list;
+      return { ...list, items: list.items.filter(i => i.id !== itemId) };
+    }));
+  };
+
+  const activeList = lists.find(l => l.id === activeListId);
+
+  // Detail View
+  if (activeList) {
+    const doneCount = activeList.items.filter(i => i.done).length;
+    return (
+      <div className="animate-fade-in flex flex-col h-full bg-gray-50 min-h-screen">
+        <Header title={activeList.name} onBack={() => setActiveListId(null)} />
+
+        <div className="flex-1 bg-white rounded-t-[2.5rem] shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] overflow-hidden flex flex-col relative z-20 mt-4">
+          <div className="p-6 pb-2 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`p-3 rounded-2xl ${activeList.color} bg-opacity-20`}>
+                <FolderOpen size={24} className="text-gray-800" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-800 leading-tight">{activeList.name}</h2>
+                <span className="text-xs text-gray-500 font-medium">{doneCount}/{activeList.items.length} erledigt</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-4 pb-24 space-y-2 mt-2">
+            {activeList.items.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-40 text-gray-300 mt-4">
+                <FolderOpen size={40} className="mb-2 opacity-20" />
+                <p className="text-sm">Noch nichts auf der Liste</p>
+              </div>
+            ) : (
+              activeList.items.map(item => (
+                <div
+                  key={item.id}
+                  onClick={() => toggleItem(item.id)}
+                  className="group flex items-center p-4 rounded-2xl transition-all duration-200 cursor-pointer border bg-white border-gray-100 shadow-sm"
+                >
+                  <div className={`w-6 h-6 rounded-lg border-2 mr-4 flex items-center justify-center transition-colors ${item.done ? 'border-gray-300 bg-gray-300' : 'border-purple-400'}`}>
+                    {item.done && <Check size={16} className="text-white" />}
+                  </div>
+                  <span className={`flex-1 font-medium ${item.done ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+                    {item.text}
+                  </span>
+                  <button
+                    onClick={(e) => deleteItem(e, item.id)}
+                    className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all opacity-0 group-hover:opacity-100"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-white via-white to-white/0 pt-10">
+            <div className="flex gap-2 bg-white/50 backdrop-blur-sm p-1 rounded-full shadow-lg border border-gray-100">
+              <input
+                value={newItemInput}
+                onChange={e => setNewItemInput(e.target.value)}
+                placeholder={`Zu ${activeList.name} hinzufügen...`}
+                onKeyDown={e => e.key === 'Enter' && addItem()}
+                className="flex-1 bg-transparent px-6 py-3 outline-none text-gray-800 placeholder-gray-400"
+              />
+              <button onClick={addItem} className="w-12 h-12 bg-purple-600 rounded-full text-white flex items-center justify-center shadow-md active:scale-95 hover:bg-purple-700 transition-colors">
+                <Plus size={20} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Overview
+  return (
+    <div className="animate-fade-in min-h-screen bg-gray-50">
+      <Header title="Organisation" onBack={onBack} />
+
+      <div className="px-4 py-2 grid grid-cols-2 gap-3 pb-24">
+        {lists.map(list => {
+          const doneCount = list.items.filter(i => i.done).length;
+          return (
+            <div key={list.id} className="relative">
+              <div
+                onClick={() => setActiveListId(list.id)}
+                className="relative overflow-hidden p-5 rounded-3xl bg-white hover:bg-gray-50 transition-all duration-300 cursor-pointer shadow-sm hover:shadow-md border border-gray-100 flex flex-col justify-between h-36"
+              >
+                <div className={`absolute top-0 right-0 p-20 rounded-full opacity-5 translate-x-8 -translate-y-8 ${list.color}`}></div>
+                <div className="flex justify-between items-start z-10">
+                  <div className={`p-3 rounded-2xl ${list.color} bg-opacity-20 text-gray-800`}>
+                    <FolderOpen size={24} className="text-gray-900 opacity-80" />
+                  </div>
+                </div>
+                <div className="z-10">
+                  <h3 className="text-lg font-medium text-gray-800 leading-tight">{list.name}</h3>
+                  <p className="text-sm text-gray-500 mt-1 truncate">
+                    {list.items.length === 0 ? 'Keine Einträge' : `${doneCount}/${list.items.length} erledigt`}
+                  </p>
+                </div>
+              </div>
+              <div className="absolute top-2 right-2 flex gap-1">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setModalName(list.name); setEditListId(list.id); }}
+                  className="w-7 h-7 bg-white rounded-full shadow-md flex items-center justify-center text-gray-400 hover:text-purple-500 transition-colors"
+                >
+                  <Edit2 size={13} />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(list.id); }}
+                  className="w-7 h-7 bg-white rounded-full shadow-md flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <FAB icon={Plus} onClick={() => { setModalName(''); setShowCreateModal(true); }} />
+
+      {showCreateModal && (
+        <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-20 sm:mb-0">
+            <h3 className="text-lg font-semibold mb-4">Neue Liste erstellen</h3>
+            <input
+              value={modalName}
+              onChange={e => setModalName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addList()}
+              placeholder="Name (z.B. Dokumente)"
+              className="w-full bg-gray-100 px-4 py-3 rounded-xl outline-none mb-4 focus:ring-2 focus:ring-purple-500"
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button onClick={() => { setShowCreateModal(false); setModalName(''); }} className="flex-1 py-3 text-gray-500 hover:bg-gray-100 rounded-xl font-medium">
+                Abbrechen
+              </button>
+              <button onClick={addList} disabled={!modalName.trim()} className="flex-1 py-3 bg-purple-600 text-white rounded-xl font-medium shadow-lg shadow-purple-200 disabled:opacity-40 disabled:shadow-none">
+                Erstellen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editListId && (
+        <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-20 sm:mb-0">
+            <h3 className="text-lg font-semibold mb-4">Liste umbenennen</h3>
+            <input
+              value={modalName}
+              onChange={e => setModalName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && saveListName()}
+              placeholder="Name"
+              className="w-full bg-gray-100 px-4 py-3 rounded-xl outline-none mb-4 focus:ring-2 focus:ring-purple-500"
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button onClick={() => { setEditListId(null); setModalName(''); }} className="flex-1 py-3 text-gray-500 hover:bg-gray-100 rounded-xl font-medium">
+                Abbrechen
+              </button>
+              <button onClick={saveListName} disabled={!modalName.trim()} className="flex-1 py-3 bg-purple-600 text-white rounded-xl font-medium shadow-lg shadow-purple-200 disabled:opacity-40 disabled:shadow-none">
+                Speichern
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmId && (
+        <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-20 sm:mb-0">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center">
+                <Trash2 size={22} className="text-red-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">Liste löschen?</h3>
+                <p className="text-sm text-gray-500">
+                  &bdquo;{lists.find(l => l.id === deleteConfirmId)?.name}&ldquo; wird dauerhaft entfernt.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => setDeleteConfirmId(null)} className="flex-1 py-3 text-gray-500 hover:bg-gray-100 rounded-xl font-medium">
+                Abbrechen
+              </button>
+              <button onClick={confirmDeleteList} className="flex-1 py-3 bg-red-500 text-white rounded-xl font-medium shadow-lg shadow-red-200">
+                Löschen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const PackingView = ({ onBack }) => {
   const [lists, setLists] = useState(() => {
     try {
@@ -2687,7 +2965,7 @@ export default function App() {
       case 'packages': return <PackagesView onBack={() => setCurrentView('dashboard')} />;
       case 'weather': return <PlaceholderView title="Wetter Details" icon={CloudSun} color="bg-sky-500" onBack={() => setCurrentView('dashboard')} />;
       case 'packing': return <PackingView onBack={() => setCurrentView('dashboard')} />;
-      case 'orga': return <PlaceholderView title="Organisation" icon={FolderOpen} color="bg-purple-500" onBack={() => setCurrentView('dashboard')} />;
+      case 'orga': return <OrgaView onBack={() => setCurrentView('dashboard')} />;
       case 'settings': return <SettingsView onBack={() => setCurrentView('dashboard')} darkModePreference={darkModePreference} setDarkModePreference={setDarkModePreference} sunTimes={sunTimes} />;
       default: return null;
     }
