@@ -2124,6 +2124,26 @@ const INITIAL_PACKAGES = {
   abholbereit: [],
 };
 
+const MONTHS_DE = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+
+const formatZeitraum = (precision, raw) => {
+  if (!raw) return null;
+  if (precision === 'year') return raw;
+  if (precision === 'month') {
+    const [year, month] = raw.split('-');
+    const monthIndex = parseInt(month, 10) - 1;
+    return `${monthIndex >= 0 && monthIndex < 12 ? MONTHS_DE[monthIndex] : month} ${year}`;
+  }
+  if (precision === 'date') {
+    const parts = raw.split('-');
+    if (parts.length === 3) {
+      const [year, month, day] = parts;
+      return `${day}.${month}.${year}`;
+    }
+  }
+  return raw;
+};
+
 const PackagesView = ({ onBack }) => {
   const LONG_PRESS_MS = 450;
 
@@ -2148,6 +2168,10 @@ const PackagesView = ({ onBack }) => {
   const [contextItem, setContextItem] = useState(null); // { categoryId, item }
   const longPressRef = useRef(null);
 
+  const [zeitraumModal, setZeitraumModal] = useState(false);
+  const [zeitraumPrecision, setZeitraumPrecision] = useState('month');
+  const [zeitraumValue, setZeitraumValue] = useState('');
+
   const stopLongPress = () => {
     if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; }
   };
@@ -2167,12 +2191,28 @@ const PackagesView = ({ onBack }) => {
 
   const confirmCategory = (categoryId) => {
     if (!pendingPackage) return;
+    if (categoryId === 'geplant') {
+      setZeitraumModal(true);
+      return;
+    }
     setPackages(prev => ({
       ...prev,
       [categoryId]: [...prev[categoryId], { id: crypto.randomUUID(), text: pendingPackage }],
     }));
     setInputValue('');
     setPendingPackage(null);
+  };
+
+  const confirmGeplant = (raw, precision) => {
+    setPackages(prev => ({
+      ...prev,
+      geplant: [...prev.geplant, { id: crypto.randomUUID(), text: pendingPackage, zeitraumRaw: raw || null, zeitraumPrecision: raw ? precision : null }],
+    }));
+    setInputValue('');
+    setPendingPackage(null);
+    setZeitraumModal(false);
+    setZeitraumValue('');
+    setZeitraumPrecision('month');
   };
 
   const deleteItem = (categoryId, itemId) => {
@@ -2230,7 +2270,14 @@ const PackagesView = ({ onBack }) => {
                 onMouseUp={stopLongPress}
                 onMouseLeave={stopLongPress}
               >
-                <span className="text-sm text-gray-700 flex-1">{item.text}</span>
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm text-gray-700 block">{item.text}</span>
+                  {item.zeitraumRaw && (
+                    <span className="text-xs text-blue-500 mt-0.5 flex items-center gap-1">
+                      <Calendar size={11} /> {formatZeitraum(item.zeitraumPrecision, item.zeitraumRaw)}
+                    </span>
+                  )}
+                </div>
                 <button
                   onMouseDown={e => e.stopPropagation()}
                   onClick={() => deleteItem(selectedCategory, item.id)}
@@ -2298,7 +2345,11 @@ const PackagesView = ({ onBack }) => {
 
       {/* Category tiles – show count */}
       <div className="px-4 grid grid-cols-2 gap-3 pb-24">
-        {PACKAGE_CATEGORIES.map(cat => (
+        {PACKAGE_CATEGORIES.map(cat => {
+          const nextGeplant = cat.id === 'geplant'
+            ? packages.geplant.filter(i => i.zeitraumRaw).sort((a, b) => a.zeitraumRaw.localeCompare(b.zeitraumRaw))[0]
+            : null;
+          return (
           <div
             key={cat.id}
             onClick={() => setSelectedCategory(cat.id)}
@@ -2309,18 +2360,26 @@ const PackagesView = ({ onBack }) => {
               <div className={`w-3 h-3 rounded-full ${cat.color}`}></div>
               <span className={`text-sm font-semibold ${cat.textColor}`}>{cat.label}</span>
             </div>
-            <div className="flex-1 flex items-end z-10">
-              <span className="text-3xl font-bold text-gray-800">{packages[cat.id].length}</span>
-              <span className="ml-2 text-sm text-gray-500 mb-1">
-                {packages[cat.id].length === 1 ? 'Paket' : 'Pakete'}
-              </span>
+            <div className="flex-1 flex flex-col justify-end z-10">
+              <div className="flex items-end">
+                <span className="text-3xl font-bold text-gray-800">{packages[cat.id].length}</span>
+                <span className="ml-2 text-sm text-gray-500 mb-1">
+                  {packages[cat.id].length === 1 ? 'Paket' : 'Pakete'}
+                </span>
+              </div>
+              {nextGeplant && (
+                <span className="text-xs text-blue-500 mt-1 flex items-center gap-1">
+                  <Calendar size={11} /> {formatZeitraum(nextGeplant.zeitraumPrecision, nextGeplant.zeitraumRaw)}
+                </span>
+              )}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Category selection popup */}
-      {pendingPackage && (
+      {pendingPackage && !zeitraumModal && (
         <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
           <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-20 sm:mb-0">
             <h3 className="text-lg font-semibold mb-1">Wo soll es hin?</h3>
@@ -2341,6 +2400,66 @@ const PackagesView = ({ onBack }) => {
               className="w-full mt-4 py-3 text-gray-500 hover:bg-gray-100 rounded-xl font-medium text-sm"
             >
               Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Zeitraum modal for Geplant */}
+      {zeitraumModal && (
+        <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-20 sm:mb-0">
+            <h3 className="text-lg font-semibold mb-1">Wann kommt es?</h3>
+            <p className="text-sm text-gray-500 mb-4 truncate">&bdquo;{pendingPackage}&ldquo;</p>
+            <div className="flex gap-2 mb-4">
+              {[{id:'year',label:'Jahr'},{id:'month',label:'Monat'},{id:'date',label:'Datum'}].map(opt => (
+                <button
+                  key={opt.id}
+                  onClick={() => { setZeitraumPrecision(opt.id); setZeitraumValue(''); }}
+                  className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-colors ${zeitraumPrecision === opt.id ? 'bg-blue-400 text-white border-blue-400' : 'bg-white text-gray-600 border-gray-200'}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {zeitraumPrecision === 'year' && (
+              <input
+                type="number"
+                value={zeitraumValue}
+                onChange={e => setZeitraumValue(e.target.value)}
+                placeholder={String(new Date().getFullYear())}
+                min="2000"
+                max="2099"
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-800 outline-none focus:border-blue-400 text-sm mb-4"
+              />
+            )}
+            {zeitraumPrecision === 'month' && (
+              <input
+                type="month"
+                value={zeitraumValue}
+                onChange={e => setZeitraumValue(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-800 outline-none focus:border-blue-400 text-sm mb-4"
+              />
+            )}
+            {zeitraumPrecision === 'date' && (
+              <input
+                type="date"
+                value={zeitraumValue}
+                onChange={e => setZeitraumValue(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-800 outline-none focus:border-blue-400 text-sm mb-4"
+              />
+            )}
+            <button
+              onClick={() => confirmGeplant(zeitraumValue || null, zeitraumPrecision)}
+              className="w-full py-3 bg-blue-400 text-white rounded-2xl font-medium text-sm shadow-md active:scale-95 transition-transform"
+            >
+              Speichern
+            </button>
+            <button
+              onClick={() => confirmGeplant(null, null)}
+              className="w-full mt-2 py-3 text-gray-500 hover:bg-gray-100 rounded-xl font-medium text-sm"
+            >
+              Überspringen
             </button>
           </div>
         </div>
