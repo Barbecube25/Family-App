@@ -525,42 +525,44 @@ const ShoppingView = ({ onBack }) => {
                   reorderLists(draggedListId, list.id);
                   setDraggedListId(null);
                 }}
-                className={`snap-start relative flex-shrink-0 w-24 h-24 rounded-3xl flex flex-col items-center justify-center transition-all duration-300 overflow-hidden ${
-                  isActive 
-                    ? 'bg-white ring-4 ring-offset-2 ring-indigo-200 shadow-xl scale-105 z-10' 
-                    : 'bg-white text-gray-500 shadow-sm border border-gray-100 hover:bg-gray-50'
+                className={`snap-start relative overflow-hidden flex-shrink-0 w-36 h-36 rounded-3xl p-4 flex flex-col justify-between transition-all duration-300 cursor-pointer border border-gray-100 ${
+                  isActive
+                    ? 'bg-white ring-4 ring-offset-2 ring-indigo-200 shadow-xl scale-105 z-10'
+                    : 'bg-white shadow-sm hover:bg-gray-50 hover:shadow-md'
                 } ${bulkDragMode && list.id !== 'general' ? 'ring-2 ring-indigo-300' : ''} ${draggedListId === list.id ? 'opacity-40' : ''} ${draggedListId && draggedListId !== list.id && list.id !== 'general' ? 'ring-2 ring-dashed ring-indigo-300' : ''}`}
               >
-                 <div className="mb-1 relative z-10">
+                 {/* Background blob like DashboardTile */}
+                 <div className="absolute top-0 right-0 p-20 rounded-full opacity-5 translate-x-8 -translate-y-8 bg-indigo-400"></div>
+
+                 {/* Logo at top-left, item count badge at top-right */}
+                 <div className="flex justify-between items-start z-10">
                    <StoreIcon name={list.name} brandDomain={list.brandDomain} size="w-10 h-10" />
-                 </div>
-                 
-                 <div className={`text-[10px] font-medium truncate max-w-[80px] px-1 relative z-10 ${isActive ? 'text-gray-900' : 'text-gray-500'}`}>
-                    {list.name}
+                   {openItems > 0 && (
+                     <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                       isActive ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-700'
+                     }`}>
+                       {openItems}
+                     </div>
+                   )}
                  </div>
 
-                 {/* Active background effect for non-logo tiles if needed, kept simple white for logos */}
-                 {isActive && (
-                    <div className="absolute inset-0 bg-gradient-to-b from-transparent to-indigo-50/50 pointer-events-none"></div>
-                 )}
-                 
-                 {openItems > 0 && (
-                   <div className={`absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold z-20 ${
-                     isActive ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-700'
-                   }`}>
-                     {openItems}
-                   </div>
-                 )}
+                 {/* Name and open count at bottom */}
+                 <div className="z-10">
+                   <h3 className={`text-sm font-medium leading-tight truncate ${isActive ? 'text-gray-900' : 'text-gray-800'}`}>
+                     {list.name}
+                   </h3>
+                   <p className="text-xs text-gray-500 mt-0.5">{openItems} offen</p>
+                 </div>
               </button>
             );
           })}
           
           <button 
             onClick={() => setShowCreateModal(true)}
-            className="flex-shrink-0 w-24 h-24 rounded-3xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 hover:bg-gray-50 hover:border-indigo-300 hover:text-indigo-400 transition-colors"
+            className="snap-start flex-shrink-0 w-36 h-36 rounded-3xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 hover:bg-gray-50 hover:border-indigo-300 hover:text-indigo-400 transition-colors"
           >
             <Plus size={24} />
-            <span className="text-[10px] font-medium mt-1">Neu</span>
+            <span className="text-xs font-medium mt-1">Neu</span>
           </button>
         </div>
       </div>
