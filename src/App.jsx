@@ -1101,44 +1101,331 @@ const TrashView = ({ onBack }) => {
   );
 };
 
-const CalendarView = ({ onBack }) => (
-  <div className="animate-fade-in">
-    <Header title="Familienkalender" onBack={onBack} />
-    <div className="px-4">
-        <div className="bg-white rounded-3xl p-4 mb-4">
-            <div className="flex justify-between items-center mb-4">
-                <span className="font-bold text-lg">Oktober 2025</span>
-                <div className="flex gap-2">
-                    <span className="p-2 bg-gray-100 rounded-full"><ArrowLeft size={16}/></span>
-                    <span className="p-2 bg-gray-100 rounded-full rotate-180"><ArrowLeft size={16}/></span>
+const CALENDAR_EVENT_COLORS = [
+  { id: 'blue',   bg: 'bg-blue-500',   light: 'bg-blue-50',   border: 'border-blue-400',   text: 'text-blue-900',   dot: 'bg-blue-500'   },
+  { id: 'red',    bg: 'bg-red-500',    light: 'bg-red-50',    border: 'border-red-400',    text: 'text-red-900',    dot: 'bg-red-500'    },
+  { id: 'green',  bg: 'bg-green-500',  light: 'bg-green-50',  border: 'border-green-400',  text: 'text-green-900',  dot: 'bg-green-500'  },
+  { id: 'orange', bg: 'bg-orange-500', light: 'bg-orange-50', border: 'border-orange-400', text: 'text-orange-900', dot: 'bg-orange-500' },
+  { id: 'purple', bg: 'bg-purple-500', light: 'bg-purple-50', border: 'border-purple-400', text: 'text-purple-900', dot: 'bg-purple-500' },
+  { id: 'teal',   bg: 'bg-teal-500',   light: 'bg-teal-50',   border: 'border-teal-400',   text: 'text-teal-900',   dot: 'bg-teal-500'   },
+];
+
+const MONTH_NAMES_DE = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+const DOW_ABBR_DE = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+
+const toDateKey = (y, m, d) => `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+const MAX_EVENT_DOTS_PER_DAY = 3;
+const MAX_UPCOMING_EVENTS_DISPLAY = 5;
+
+const CalendarView = ({ onBack }) => {
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const todayStr = toDateKey(today.getFullYear(), today.getMonth(), today.getDate());
+
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const [selectedDate, setSelectedDate] = useState(todayStr);
+  const [events, setEvents] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('family_app_calendar_events') || 'null') || []; }
+    catch { return []; }
+  });
+  const [showModal, setShowModal] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [form, setForm] = useState({ title: '', date: todayStr, time: '', colorId: 'blue' });
+
+  useEffect(() => {
+    try { localStorage.setItem('family_app_calendar_events', JSON.stringify(events)); } catch {}
+  }, [events]);
+
+  const goToPrevMonth = () => {
+    if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }
+    else setViewMonth(m => m - 1);
+  };
+  const goToNextMonth = () => {
+    if (viewMonth === 11) { setViewYear(y => y + 1); setViewMonth(0); }
+    else setViewMonth(m => m + 1);
+  };
+  const goToToday = () => {
+    setViewYear(today.getFullYear());
+    setViewMonth(today.getMonth());
+    setSelectedDate(todayStr);
+  };
+
+  // Build calendar grid cells (Mon=0 … Sun=6)
+  const firstDow = new Date(viewYear, viewMonth, 1).getDay(); // 0=Sun
+  const leadingBlanks = (firstDow + 6) % 7; // convert to Mon-based
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < leadingBlanks; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  const eventsForDate = (key) => events.filter(e => e.date === key);
+
+  const openCreateModal = (dateStr) => {
+    setEditingEvent(null);
+    setForm({ title: '', date: dateStr || selectedDate, time: '', colorId: 'blue' });
+    setShowModal(true);
+  };
+  const openEditModal = (ev) => {
+    setEditingEvent(ev);
+    setForm({ title: ev.title, date: ev.date, time: ev.time || '', colorId: ev.colorId || 'blue' });
+    setShowModal(true);
+  };
+  const closeModal = () => { setShowModal(false); setEditingEvent(null); };
+
+  const saveEvent = () => {
+    if (!form.title.trim()) return;
+    if (editingEvent) {
+      setEvents(prev => prev.map(e => e.id === editingEvent.id ? { ...e, ...form, title: form.title.trim() } : e));
+    } else {
+      setEvents(prev => [...prev, { id: crypto.randomUUID(), ...form, title: form.title.trim() }]);
+    }
+    closeModal();
+  };
+  const deleteEvent = (id) => {
+    setEvents(prev => prev.filter(e => e.id !== id));
+    closeModal();
+  };
+
+  const selectedEvents = eventsForDate(selectedDate);
+
+  const parseDateKey = (key) => { const [y,m,d] = key.split('-').map(Number); return new Date(y, m-1, d); };
+  const formatDateLabel = (key) => {
+    const dt = parseDateKey(key);
+    const diff = Math.round((dt - today) / 86400000);
+    if (diff === 0) return 'Heute';
+    if (diff === 1) return 'Morgen';
+    if (diff === -1) return 'Gestern';
+    return `${DOW_ABBR_DE[(dt.getDay()+6)%7]}, ${dt.getDate()}. ${MONTH_NAMES_DE[dt.getMonth()]}`;
+  };
+
+  const handleUpcomingEventClick = (ev) => {
+    const dt = parseDateKey(ev.date);
+    setSelectedDate(ev.date);
+    setViewYear(dt.getFullYear());
+    setViewMonth(dt.getMonth());
+    openEditModal(ev);
+  };
+
+  // Upcoming events (today onwards, sorted)
+  const upcomingEvents = [...events]
+    .filter(e => e.date >= todayStr)
+    .sort((a,b) => a.date.localeCompare(b.date) || (a.time||'').localeCompare(b.time||''));
+
+  return (
+    <div className="animate-fade-in relative min-h-screen pb-24">
+      <Header
+        title="Familienkalender"
+        onBack={onBack}
+        rightAction={
+          <button
+            onClick={goToToday}
+            className="text-sm font-medium text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-full transition-colors"
+          >
+            Heute
+          </button>
+        }
+      />
+
+      {/* Month navigator + grid */}
+      <div className="px-4">
+        <div className="bg-white rounded-3xl p-4 mb-4 shadow-sm">
+          {/* Month header */}
+          <div className="flex justify-between items-center mb-3">
+            <span className="font-semibold text-lg text-gray-800">
+              {MONTH_NAMES_DE[viewMonth]} {viewYear}
+            </span>
+            <div className="flex gap-1">
+              <button onClick={goToPrevMonth} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                <ChevronLeft size={18} className="text-gray-600" />
+              </button>
+              <button onClick={goToNextMonth} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                <ChevronRight size={18} className="text-gray-600" />
+              </button>
+            </div>
+          </div>
+
+          {/* Weekday headers */}
+          <div className="grid grid-cols-7 text-center text-xs font-medium text-gray-400 mb-1">
+            {DOW_ABBR_DE.map(d => <div key={d}>{d}</div>)}
+          </div>
+
+          {/* Day cells */}
+          <div className="grid grid-cols-7 gap-y-1">
+            {cells.map((day, idx) => {
+              if (day === null) return <div key={`blank-${idx}`} />;
+              const key = toDateKey(viewYear, viewMonth, day);
+              const isToday = key === todayStr;
+              const isSelected = key === selectedDate;
+              const dayEvents = eventsForDate(key);
+              return (
+                <div
+                  key={key}
+                  onClick={() => setSelectedDate(key)}
+                  className="flex flex-col items-center py-0.5 cursor-pointer group"
+                >
+                  <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-colors
+                    ${isToday && isSelected ? 'bg-indigo-600 text-white' :
+                      isToday ? 'bg-indigo-100 text-indigo-700' :
+                      isSelected ? 'bg-gray-200 text-gray-800' :
+                      'text-gray-700 group-hover:bg-gray-100'}`}
+                  >
+                    {day}
+                  </div>
+                  {/* Event dots */}
+                  <div className="flex gap-0.5 mt-0.5 h-1.5">
+                    {dayEvents.slice(0, MAX_EVENT_DOTS_PER_DAY).map(ev => {
+                      const col = CALENDAR_EVENT_COLORS.find(c => c.id === ev.colorId) || CALENDAR_EVENT_COLORS[0];
+                      return <div key={ev.id} className={`w-1.5 h-1.5 rounded-full ${col.dot}`} />;
+                    })}
+                  </div>
                 </div>
-            </div>
-            <div className="grid grid-cols-7 gap-2 text-center text-sm mb-2 text-gray-400">
-                <div>Mo</div><div>Di</div><div>Mi</div><div>Do</div><div>Fr</div><div>Sa</div><div>So</div>
-            </div>
-            <div className="grid grid-cols-7 gap-2 text-center text-sm font-medium">
-                {[...Array(31)].map((_, i) => (
-                    <div key={i} className={`aspect-square flex items-center justify-center rounded-full ${i === 26 ? 'bg-indigo-600 text-white' : 'hover:bg-gray-100'}`}>
-                        {i + 1}
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Selected day events */}
+        <div className="mb-2 flex items-center justify-between px-1">
+          <h3 className="text-base font-semibold text-gray-800">{formatDateLabel(selectedDate)}</h3>
+          <button
+            onClick={() => openCreateModal(selectedDate)}
+            className="text-sm text-indigo-600 font-medium hover:bg-indigo-50 px-2 py-1 rounded-full transition-colors"
+          >
+            + Termin
+          </button>
+        </div>
+
+        {selectedEvents.length === 0 ? (
+          <div className="text-sm text-gray-400 px-1 mb-4">Keine Termine</div>
+        ) : (
+          <div className="space-y-2 mb-4">
+            {selectedEvents
+              .sort((a,b) => (a.time||'').localeCompare(b.time||''))
+              .map(ev => {
+                const col = CALENDAR_EVENT_COLORS.find(c => c.id === ev.colorId) || CALENDAR_EVENT_COLORS[0];
+                return (
+                  <div
+                    key={ev.id}
+                    onClick={() => openEditModal(ev)}
+                    className={`flex items-center gap-3 p-3 rounded-2xl border-l-4 cursor-pointer ${col.light} ${col.border}`}
+                  >
+                    <div className="flex-1">
+                      <div className={`font-semibold text-sm ${col.text}`}>{ev.title}</div>
+                      {ev.time && <div className={`text-xs mt-0.5 opacity-70 ${col.text}`}>{ev.time} Uhr</div>}
                     </div>
-                ))}
+                    <ChevronRight size={16} className="text-gray-400" />
+                  </div>
+                );
+              })}
+          </div>
+        )}
+
+        {/* Upcoming events section */}
+        {upcomingEvents.length > 0 && (
+          <>
+            <h3 className="text-base font-semibold text-gray-800 px-1 mb-2 mt-2">Kommende Termine</h3>
+            <div className="space-y-2 mb-4">
+              {upcomingEvents.slice(0, MAX_UPCOMING_EVENTS_DISPLAY).map(ev => {
+                const col = CALENDAR_EVENT_COLORS.find(c => c.id === ev.colorId) || CALENDAR_EVENT_COLORS[0];
+                const dt = parseDateKey(ev.date);
+                const diff = Math.round((dt - today) / 86400000);
+                const label = diff === 0 ? 'Heute' : diff === 1 ? 'Morgen' :
+                  `${DOW_ABBR_DE[(dt.getDay()+6)%7]}, ${dt.getDate()}. ${MONTH_NAMES_DE[dt.getMonth()]}`;
+                return (
+                  <div
+                    key={ev.id}
+                    onClick={() => handleUpcomingEventClick(ev)}
+                    className={`flex items-center gap-3 p-3 rounded-2xl border-l-4 cursor-pointer ${col.light} ${col.border}`}
+                  >
+                    <div className="flex-1">
+                      <div className={`font-semibold text-sm ${col.text}`}>{ev.title}</div>
+                      <div className={`text-xs mt-0.5 opacity-70 ${col.text}`}>{label}{ev.time ? `, ${ev.time} Uhr` : ''}</div>
+                    </div>
+                    <ChevronRight size={16} className="text-gray-400" />
+                  </div>
+                );
+              })}
             </div>
+          </>
+        )}
+      </div>
+
+      {/* FAB */}
+      <FAB onClick={() => openCreateModal(selectedDate)} icon={Plus} />
+
+      {/* Event modal */}
+      {showModal && (
+        <div className="absolute inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-end justify-center animate-fade-in">
+          <div className="bg-white w-full rounded-t-3xl p-6 shadow-2xl">
+            <h3 className="text-lg font-semibold mb-4">{editingEvent ? 'Termin bearbeiten' : 'Neuer Termin'}</h3>
+
+            <input
+              value={form.title}
+              onChange={e => setForm(f => ({...f, title: e.target.value}))}
+              placeholder="Titel"
+              className="w-full bg-gray-100 px-4 py-3 rounded-xl outline-none mb-3 focus:ring-2 focus:ring-indigo-400 text-gray-800"
+              autoFocus
+            />
+
+            <div className="flex gap-3 mb-3">
+              <div className="flex-1">
+                <label className="text-xs text-gray-500 mb-1 block">Datum</label>
+                <input
+                  type="date"
+                  value={form.date}
+                  onChange={e => setForm(f => ({...f, date: e.target.value}))}
+                  className="w-full bg-gray-100 px-4 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-indigo-400 text-gray-800"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="text-xs text-gray-500 mb-1 block">Uhrzeit (optional)</label>
+                <input
+                  type="time"
+                  value={form.time}
+                  onChange={e => setForm(f => ({...f, time: e.target.value}))}
+                  className="w-full bg-gray-100 px-4 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-indigo-400 text-gray-800"
+                />
+              </div>
+            </div>
+
+            {/* Color picker */}
+            <div className="flex gap-2 mb-5">
+              {CALENDAR_EVENT_COLORS.map(col => (
+                <button
+                  key={col.id}
+                  onClick={() => setForm(f => ({...f, colorId: col.id}))}
+                  className={`w-8 h-8 rounded-full ${col.bg} transition-transform ${form.colorId === col.id ? 'ring-2 ring-offset-2 ring-gray-400 scale-110' : 'opacity-70 hover:opacity-100'}`}
+                />
+              ))}
+            </div>
+
+            <div className="flex gap-3">
+              {editingEvent && (
+                <button
+                  onClick={() => deleteEvent(editingEvent.id)}
+                  className="flex-1 py-3 text-red-500 hover:bg-red-50 rounded-xl font-medium transition-colors"
+                >
+                  Löschen
+                </button>
+              )}
+              <button onClick={closeModal} className="flex-1 py-3 text-gray-500 hover:bg-gray-100 rounded-xl font-medium transition-colors">
+                Abbrechen
+              </button>
+              <button
+                onClick={saveEvent}
+                disabled={!form.title.trim()}
+                className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-medium shadow-lg shadow-indigo-200 disabled:opacity-40 disabled:shadow-none transition-colors"
+              >
+                {editingEvent ? 'Speichern' : 'Erstellen'}
+              </button>
+            </div>
+          </div>
         </div>
-        
-        <h3 className="text-lg font-medium mb-3 px-2">Kommende Termine</h3>
-        <div className="space-y-3">
-             <div className="bg-orange-50 border-l-4 border-orange-400 p-4 rounded-r-xl">
-                <div className="text-orange-900 font-semibold">Elternabend Schule</div>
-                <div className="text-orange-700/70 text-sm">Heute, 19:00 Uhr</div>
-             </div>
-             <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-xl">
-                <div className="text-blue-900 font-semibold">Fußballtraining Max</div>
-                <div className="text-blue-700/70 text-sm">Morgen, 16:30 Uhr</div>
-             </div>
-        </div>
+      )}
     </div>
-  </div>
-);
+  );
+};
 
 const TaskView = ({ onBack, onNavigateToShopping }) => {
   const LONG_PRESS_MS = 450;
