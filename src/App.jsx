@@ -1013,32 +1013,478 @@ const ShoppingView = ({ onBack, initialListId }) => {
   );
 };
 
-const FinanceView = ({ onBack }) => (
-  <div className="animate-fade-in">
-    <Header title="Finanzen" onBack={onBack} />
-    <div className="px-4">
-      <div className="bg-emerald-100 rounded-3xl p-6 mb-6 text-emerald-900">
-        <div className="text-sm opacity-70">Aktuelles Haushaltsbudget</div>
-        <div className="text-4xl font-semibold mt-1">€ {FINANCE_DATA.balance.toFixed(2)}</div>
+// --- Finance / Budget ---
+
+const INTERVAL_LABELS = {
+  monthly: 'Monatlich',
+  quarterly: 'Vierteljährlich',
+  semiannual: 'Halbjährlich',
+  yearly: 'Jährlich',
+};
+
+const INTERVAL_MONTHS = { monthly: 1, quarterly: 3, semiannual: 6, yearly: 12 };
+
+const ENTRY_TYPES = ['abo', 'rate', 'abbuchung', 'einkommen'];
+const ENTRY_TYPE_LABELS = { abo: 'Abo', rate: 'Ratenzahlung', abbuchung: 'Abbuchung', einkommen: 'Einkommen' };
+
+const INITIAL_BUDGETS = {
+  sonja: { income: [], abos: [], rates: [], abbuchungen: [] },
+  michael: { income: [], abos: [], rates: [], abbuchungen: [] },
+};
+
+const formatEur = (val) =>
+  Number(val).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+
+const calcMonthlyAmount = (amount, interval) =>
+  parseFloat(amount || 0) / (INTERVAL_MONTHS[interval] || 1);
+
+const calcPayoffDate = (paidSoFar, totalAmount, installment, interval) => {
+  const paid = parseFloat(paidSoFar || 0);
+  const total = parseFloat(totalAmount || 0);
+  const inst = parseFloat(installment || 0);
+  if (!total || !inst || paid >= total) return null;
+  const remaining = total - paid;
+  const periodsLeft = Math.ceil(remaining / inst);
+  const monthsLeft = periodsLeft * (INTERVAL_MONTHS[interval] || 1);
+  const d = new Date();
+  d.setMonth(d.getMonth() + monthsLeft);
+  return d.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+};
+
+const calcBudgetSummary = (budget) => {
+  const monthlyIncome = budget.income.reduce((s, e) => s + calcMonthlyAmount(e.amount, e.interval || 'monthly'), 0);
+  const monthlyAbos = budget.abos.reduce((s, e) => s + calcMonthlyAmount(e.amount, e.interval), 0);
+  const monthlyRates = budget.rates.reduce((s, e) => {
+    const paid = parseFloat(e.paidSoFar || 0);
+    const total = parseFloat(e.totalAmount || 0);
+    if (paid >= total && total > 0) return s;
+    return s + calcMonthlyAmount(e.installment, e.interval);
+  }, 0);
+  const monthlyAbbuchungen = budget.abbuchungen.reduce((s, e) => s + calcMonthlyAmount(e.amount, e.interval), 0);
+  const monthlyExpenses = monthlyAbos + monthlyRates + monthlyAbbuchungen;
+  return { monthlyIncome, monthlyExpenses, monthlyBalance: monthlyIncome - monthlyExpenses };
+};
+
+const EMPTY_FORM = {
+  type: 'abo',
+  title: '',
+  amount: '',
+  interval: 'monthly',
+  installment: '',
+  paidSoFar: '',
+  totalAmount: '',
+};
+
+const BudgetEntryModal = ({ initial, onSave, onClose }) => {
+  const [form, setForm] = useState(initial || EMPTY_FORM);
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const handleSave = () => {
+    if (!form.title.trim()) return;
+    if (form.type === 'einkommen' && !form.amount) return;
+    if (form.type !== 'einkommen' && form.type !== 'rate' && !form.amount) return;
+    if (form.type === 'rate' && (!form.installment || !form.totalAmount)) return;
+    onSave(form);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
+      <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-4 sm:mb-0 space-y-4">
+        <h3 className="text-lg font-semibold">{initial ? 'Eintrag bearbeiten' : 'Neuer Eintrag'}</h3>
+
+        {/* Type selector */}
+        <div className="grid grid-cols-2 gap-2">
+          {ENTRY_TYPES.map(t => (
+            <button
+              key={t}
+              onClick={() => set('type', t)}
+              className={`py-2 px-3 rounded-xl text-sm font-medium transition-colors ${form.type === t ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+            >
+              {ENTRY_TYPE_LABELS[t]}
+            </button>
+          ))}
+        </div>
+
+        <input
+          className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+          placeholder="Bezeichnung"
+          value={form.title}
+          onChange={e => set('title', e.target.value)}
+        />
+
+        {form.type === 'rate' ? (
+          <>
+            <input
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              placeholder="Rate (€)"
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.installment}
+              onChange={e => set('installment', e.target.value)}
+            />
+            <input
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              placeholder="Bereits bezahlt (€)"
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.paidSoFar}
+              onChange={e => set('paidSoFar', e.target.value)}
+            />
+            <input
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              placeholder="Gesamtbetrag (€)"
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.totalAmount}
+              onChange={e => set('totalAmount', e.target.value)}
+            />
+          </>
+        ) : (
+          <input
+            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+            placeholder="Betrag (€)"
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.amount}
+            onChange={e => set('amount', e.target.value)}
+          />
+        )}
+
+        {form.type !== 'abbuchung' && (
+          <select
+            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white"
+            value={form.interval}
+            onChange={e => set('interval', e.target.value)}
+          >
+            {Object.entries(INTERVAL_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
+          </select>
+        )}
+
+        <div className="flex gap-3 pt-2">
+          <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-gray-100 text-gray-700 font-medium text-sm">Abbrechen</button>
+          <button onClick={handleSave} className="flex-1 py-3 rounded-xl bg-emerald-600 text-white font-medium text-sm">Speichern</button>
+        </div>
       </div>
-      
-      <h3 className="text-lg font-medium mb-4 px-2">Letzte Umsätze</h3>
-      <div className="space-y-3">
-        {FINANCE_DATA.transactions.map(t => (
-          <div key={t.id} className="bg-white p-4 rounded-2xl flex justify-between items-center">
+    </div>
+  );
+};
+
+const BudgetPersonView = ({ person, budget, onUpdateBudget, onBack }) => {
+  const [showModal, setShowModal] = useState(false);
+  const [editEntry, setEditEntry] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const summary = calcBudgetSummary(budget);
+
+  const categoryKey = (type) => {
+    if (type === 'einkommen') return 'income';
+    if (type === 'abo') return 'abos';
+    if (type === 'rate') return 'rates';
+    return 'abbuchungen';
+  };
+
+  const handleSave = (form) => {
+    const key = categoryKey(form.type);
+    if (editEntry) {
+      onUpdateBudget(prev => ({
+        ...prev,
+        [key]: prev[key].map(e => e.id === editEntry.id ? { ...form, id: editEntry.id } : e),
+      }));
+    } else {
+      onUpdateBudget(prev => ({
+        ...prev,
+        [key]: [...prev[key], { ...form, id: crypto.randomUUID() }],
+      }));
+    }
+    setShowModal(false);
+    setEditEntry(null);
+  };
+
+  const handleDelete = (type, id) => {
+    const key = categoryKey(type);
+    onUpdateBudget(prev => ({ ...prev, [key]: prev[key].filter(e => e.id !== id) }));
+    setDeleteConfirm(null);
+  };
+
+  const openEdit = (entry) => {
+    setEditEntry(entry);
+    setShowModal(true);
+  };
+
+  const sections = [
+    { label: 'Einkommen', key: 'income', type: 'einkommen', color: 'text-emerald-600' },
+    { label: 'Abos', key: 'abos', type: 'abo', color: 'text-red-500' },
+    { label: 'Ratenzahlungen', key: 'rates', type: 'rate', color: 'text-orange-500' },
+    { label: 'Abbuchungen', key: 'abbuchungen', type: 'abbuchung', color: 'text-gray-600' },
+  ];
+
+  return (
+    <div className="animate-fade-in min-h-screen bg-gray-50">
+      <Header title={person} onBack={onBack} />
+      <div className="px-4 pb-24 space-y-4">
+        {/* Summary card */}
+        <div className="bg-emerald-600 rounded-3xl p-5 text-white">
+          <div className="grid grid-cols-3 gap-2 text-center">
             <div>
-              <div className="font-medium text-gray-800">{t.title}</div>
-              <div className="text-xs text-gray-500">{t.date}</div>
+              <div className="text-xs opacity-80">Einnahmen/Mo</div>
+              <div className="text-base font-semibold mt-0.5">{formatEur(summary.monthlyIncome)}</div>
             </div>
-            <div className={`font-semibold ${t.amount < 0 ? 'text-gray-800' : 'text-emerald-600'}`}>
-              {t.amount > 0 ? '+' : ''}{t.amount.toFixed(2)} €
+            <div>
+              <div className="text-xs opacity-80">Ausgaben/Mo</div>
+              <div className="text-base font-semibold mt-0.5">-{formatEur(summary.monthlyExpenses)}</div>
+            </div>
+            <div>
+              <div className="text-xs opacity-80">Saldo/Mo</div>
+              <div className={`text-base font-semibold mt-0.5 ${summary.monthlyBalance < 0 ? 'text-red-200' : 'text-white'}`}>
+                {summary.monthlyBalance >= 0 ? '' : '-'}{formatEur(Math.abs(summary.monthlyBalance))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {sections.map(sec => (
+          <div key={sec.key} className="bg-white rounded-3xl p-4 shadow-sm border border-gray-100">
+            <h4 className={`text-sm font-semibold mb-3 ${sec.color}`}>{sec.label}</h4>
+            {budget[sec.key].length === 0 ? (
+              <p className="text-xs text-gray-400 italic">Noch keine Einträge</p>
+            ) : (
+              <div className="space-y-2">
+                {budget[sec.key].map(entry => {
+                  const isRate = sec.type === 'rate';
+                  const paidOff = isRate && parseFloat(entry.paidSoFar || 0) >= parseFloat(entry.totalAmount || 0) && parseFloat(entry.totalAmount || 0) > 0;
+                  const payoff = isRate ? calcPayoffDate(entry.paidSoFar, entry.totalAmount, entry.installment, entry.interval) : null;
+                  const monthlyVal = isRate
+                    ? calcMonthlyAmount(entry.installment, entry.interval)
+                    : calcMonthlyAmount(entry.amount, entry.interval || 'monthly');
+                  return (
+                    <div key={entry.id} className={`flex items-start justify-between gap-2 py-2 px-3 rounded-2xl ${paidOff ? 'bg-green-50' : 'bg-gray-50'}`}>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-gray-800 truncate">{entry.title}</span>
+                          {paidOff && <span className="text-xs bg-green-200 text-green-700 px-2 py-0.5 rounded-full">Abbezahlt ✓</span>}
+                        </div>
+                        {isRate ? (
+                          <div className="text-xs text-gray-500 mt-0.5 space-y-0.5">
+                            <div>Rate: {formatEur(entry.installment)} · {INTERVAL_LABELS[entry.interval] || ''}</div>
+                            <div>Bezahlt: {formatEur(entry.paidSoFar)} / {formatEur(entry.totalAmount)}</div>
+                            {!paidOff && payoff && <div className="text-orange-500">Abgezahlt ca. {payoff}</div>}
+                            <div className="text-gray-400">≈ {formatEur(monthlyVal)}/Monat</div>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {sec.type !== 'abbuchung' && entry.interval ? `${INTERVAL_LABELS[entry.interval]} · ` : ''}
+                            {formatEur(entry.amount)}
+                            {sec.type !== 'abbuchung' && sec.type !== 'einkommen' && ` · ≈ ${formatEur(monthlyVal)}/Mo`}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        <button onClick={() => openEdit({ ...entry, type: sec.type })} className="p-1.5 text-gray-400 hover:text-blue-500 rounded-full transition-colors">
+                          <Edit2 size={14} />
+                        </button>
+                        <button onClick={() => setDeleteConfirm({ type: sec.type, id: entry.id, title: entry.title })} className="p-1.5 text-gray-400 hover:text-red-500 rounded-full transition-colors">
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <FAB onClick={() => { setEditEntry(null); setShowModal(true); }} icon={Plus} />
+
+      {showModal && (
+        <BudgetEntryModal
+          initial={editEntry || EMPTY_FORM}
+          onSave={handleSave}
+          onClose={() => { setShowModal(false); setEditEntry(null); }}
+        />
+      )}
+
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-4 sm:mb-0">
+            <h3 className="text-lg font-semibold mb-1">Eintrag löschen?</h3>
+            <p className="text-sm text-gray-500 mb-5">&ldquo;{deleteConfirm.title}&rdquo;</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-3 rounded-xl bg-gray-100 text-gray-700 font-medium text-sm">Abbrechen</button>
+              <button onClick={() => handleDelete(deleteConfirm.type, deleteConfirm.id)} className="flex-1 py-3 rounded-xl bg-red-500 text-white font-medium text-sm">Löschen</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const HaushaltView = ({ budgets, onBack }) => {
+  const sonjaSummary = calcBudgetSummary(budgets.sonja);
+  const michaelSummary = calcBudgetSummary(budgets.michael);
+  const combined = {
+    monthlyIncome: sonjaSummary.monthlyIncome + michaelSummary.monthlyIncome,
+    monthlyExpenses: sonjaSummary.monthlyExpenses + michaelSummary.monthlyExpenses,
+    monthlyBalance: sonjaSummary.monthlyBalance + michaelSummary.monthlyBalance,
+  };
+
+  const allEntries = [
+    ...budgets.sonja.income.map(e => ({ ...e, person: 'Sonja', category: 'Einkommen' })),
+    ...budgets.michael.income.map(e => ({ ...e, person: 'Michael', category: 'Einkommen' })),
+    ...budgets.sonja.abos.map(e => ({ ...e, person: 'Sonja', category: 'Abo' })),
+    ...budgets.michael.abos.map(e => ({ ...e, person: 'Michael', category: 'Abo' })),
+    ...budgets.sonja.rates.map(e => ({ ...e, person: 'Sonja', category: 'Rate' })),
+    ...budgets.michael.rates.map(e => ({ ...e, person: 'Michael', category: 'Rate' })),
+    ...budgets.sonja.abbuchungen.map(e => ({ ...e, person: 'Sonja', category: 'Abbuchung' })),
+    ...budgets.michael.abbuchungen.map(e => ({ ...e, person: 'Michael', category: 'Abbuchung' })),
+  ];
+
+  return (
+    <div className="animate-fade-in min-h-screen bg-gray-50">
+      <Header title="Haushaltskonto" onBack={onBack} />
+      <div className="px-4 pb-24 space-y-4">
+        <div className="bg-gray-900 rounded-3xl p-5 text-white">
+          <div className="text-xs opacity-60 mb-3 uppercase tracking-widest">Monatliche Übersicht</div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div>
+              <div className="text-xs opacity-70">Einnahmen</div>
+              <div className="text-base font-semibold mt-0.5 text-emerald-400">{formatEur(combined.monthlyIncome)}</div>
+            </div>
+            <div>
+              <div className="text-xs opacity-70">Ausgaben</div>
+              <div className="text-base font-semibold mt-0.5 text-red-400">-{formatEur(combined.monthlyExpenses)}</div>
+            </div>
+            <div>
+              <div className="text-xs opacity-70">Saldo</div>
+              <div className={`text-base font-semibold mt-0.5 ${combined.monthlyBalance < 0 ? 'text-red-300' : 'text-emerald-300'}`}>
+                {combined.monthlyBalance >= 0 ? '' : '-'}{formatEur(Math.abs(combined.monthlyBalance))}
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-center text-white/60 border-t border-white/10 pt-3">
+            <div>Sonja: {formatEur(sonjaSummary.monthlyBalance)}/Mo</div>
+            <div>Michael: {formatEur(michaelSummary.monthlyBalance)}/Mo</div>
+          </div>
+        </div>
+
+        {allEntries.length === 0 ? (
+          <p className="text-center text-gray-400 italic mt-8">Noch keine Einträge vorhanden.<br/>Füge Einträge in Sonjas oder Michaels Budget hinzu.</p>
+        ) : (
+          <div className="bg-white rounded-3xl p-4 shadow-sm border border-gray-100">
+            <h4 className="text-sm font-semibold mb-3 text-gray-600">Alle Einträge</h4>
+            <div className="space-y-2">
+              {allEntries.map(entry => {
+                const isIncome = entry.category === 'Einkommen';
+                const isRate = entry.category === 'Rate';
+                const amount = isRate ? entry.installment : entry.amount;
+                const monthly = calcMonthlyAmount(amount, entry.interval || 'monthly');
+                const paidOff = isRate && parseFloat(entry.paidSoFar || 0) >= parseFloat(entry.totalAmount || 0) && parseFloat(entry.totalAmount || 0) > 0;
+                return (
+                  <div key={entry.id} className={`flex items-center justify-between gap-2 py-2 px-3 rounded-2xl ${paidOff ? 'bg-green-50' : 'bg-gray-50'}`}>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-medium text-gray-800 truncate block">{entry.title}</span>
+                      <span className="text-xs text-gray-400">{entry.person} · {entry.category}{entry.interval && !isRate ? ` · ${INTERVAL_LABELS[entry.interval] || ''}` : ''}</span>
+                    </div>
+                    <div className={`text-sm font-semibold ${isIncome ? 'text-emerald-600' : paidOff ? 'text-green-400 line-through' : 'text-gray-700'}`}>
+                      {isIncome ? '+' : '-'}{formatEur(monthly)}<span className="text-xs font-normal">/Mo</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const FinanceView = ({ onBack }) => {
+  const [budgets, setBudgets] = useState(() => {
+    try {
+      const saved = localStorage.getItem('family_app_budgets');
+      return saved ? JSON.parse(saved) : INITIAL_BUDGETS;
+    } catch {
+      return INITIAL_BUDGETS;
+    }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem('family_app_budgets', JSON.stringify(budgets)); } catch {}
+  }, [budgets]);
+
+  const [subView, setSubView] = useState(null); // null | 'sonja' | 'michael' | 'haushalt'
+
+  const updateBudget = (person, updater) => {
+    setBudgets(prev => ({ ...prev, [person]: updater(prev[person]) }));
+  };
+
+  if (subView === 'sonja') {
+    return <BudgetPersonView person="Sonja" budget={budgets.sonja} onUpdateBudget={u => updateBudget('sonja', u)} onBack={() => setSubView(null)} />;
+  }
+  if (subView === 'michael') {
+    return <BudgetPersonView person="Michael" budget={budgets.michael} onUpdateBudget={u => updateBudget('michael', u)} onBack={() => setSubView(null)} />;
+  }
+  if (subView === 'haushalt') {
+    return <HaushaltView budgets={budgets} onBack={() => setSubView(null)} />;
+  }
+
+  const sonjaSummary = calcBudgetSummary(budgets.sonja);
+  const michaelSummary = calcBudgetSummary(budgets.michael);
+  const combinedBalance = sonjaSummary.monthlyBalance + michaelSummary.monthlyBalance;
+
+  return (
+    <div className="animate-fade-in min-h-screen bg-gray-50">
+      <Header title="Finanzen" onBack={onBack} />
+      <div className="px-4 pb-24 space-y-4">
+        {/* Household overview */}
+        <div
+          className="bg-emerald-600 rounded-3xl p-6 text-white cursor-pointer active:opacity-90 transition-opacity"
+          onClick={() => setSubView('haushalt')}
+        >
+          <div className="text-xs opacity-80 uppercase tracking-widest mb-1">Haushaltskonto</div>
+          <div className="text-3xl font-semibold">
+            {combinedBalance >= 0 ? '' : '-'}{formatEur(Math.abs(combinedBalance))}<span className="text-base font-normal opacity-70">/Mo</span>
+          </div>
+          <div className="text-xs opacity-70 mt-1">Saldo pro Monat · Tippen für Details →</div>
+        </div>
+
+        {/* Person budgets */}
+        {[
+          { key: 'sonja', label: 'Sonja', summary: sonjaSummary, color: 'bg-indigo-500' },
+          { key: 'michael', label: 'Michael', summary: michaelSummary, color: 'bg-purple-500' },
+        ].map(({ key, label, summary, color }) => (
+          <div
+            key={key}
+            className={`${color} rounded-3xl p-5 text-white cursor-pointer active:opacity-90 transition-opacity`}
+            onClick={() => setSubView(key)}
+          >
+            <div className="flex justify-between items-start">
+              <div>
+                <div className="text-sm opacity-80">{label}</div>
+                <div className="text-2xl font-semibold mt-0.5">
+                  {summary.monthlyBalance >= 0 ? '' : '-'}{formatEur(Math.abs(summary.monthlyBalance))}<span className="text-sm font-normal opacity-70">/Mo</span>
+                </div>
+              </div>
+              <ArrowRight size={20} className="opacity-60 mt-1" />
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-white/70">
+              <div>↑ Einnahmen: {formatEur(summary.monthlyIncome)}</div>
+              <div>↓ Ausgaben: {formatEur(summary.monthlyExpenses)}</div>
             </div>
           </div>
         ))}
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 const TrashView = ({ onBack }) => {
   const [selectedType, setSelectedType] = useState(null);
