@@ -1117,6 +1117,33 @@ const toDateKey = (y, m, d) => `${y}-${String(m+1).padStart(2,'0')}-${String(d).
 const MAX_EVENT_DOTS_PER_DAY = 3;
 const MAX_UPCOMING_EVENTS_DISPLAY = 5;
 
+const SHIFT_TYPES = [
+  { id: 'früh',   label: 'Früh',   abbr: 'Fh', bg: 'bg-amber-400',  text: 'text-amber-900',  dot: 'bg-amber-400'  },
+  { id: 'mittel', label: 'Mittel', abbr: 'Mi', bg: 'bg-sky-400',    text: 'text-sky-900',    dot: 'bg-sky-400'    },
+  { id: 'spät',   label: 'Spät',   abbr: 'Sp', bg: 'bg-indigo-500', text: 'text-indigo-100', dot: 'bg-indigo-500' },
+  { id: 'urlaub', label: 'Urlaub', abbr: 'Ur', bg: 'bg-green-500',  text: 'text-green-100',  dot: 'bg-green-500'  },
+  { id: 'frei',   label: 'Frei',   abbr: 'Fr', bg: 'bg-gray-300',   text: 'text-gray-700',   dot: 'bg-gray-300'   },
+];
+
+const getISOWeekInfo = (date) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+  const yearStart = new Date(d.getFullYear(), 0, 1);
+  return { week: Math.ceil((((d - yearStart) / 86400000) + 1) / 7), isoYear: d.getFullYear() };
+};
+
+const getWeekDates = (isoYear, weekNum) => {
+  const jan4 = new Date(isoYear, 0, 4);
+  const mon = new Date(jan4);
+  mon.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7) + (weekNum - 1) * 7);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(mon);
+    d.setDate(mon.getDate() + i);
+    return d;
+  });
+};
+
 const CalendarView = ({ onBack }) => {
   const today = new Date();
   today.setHours(0,0,0,0);
@@ -1136,6 +1163,39 @@ const CalendarView = ({ onBack }) => {
   useEffect(() => {
     try { localStorage.setItem('family_app_calendar_events', JSON.stringify(events)); } catch {}
   }, [events]);
+
+  const [shifts, setShifts] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('family_app_shifts') || 'null') || {}; }
+    catch { return {}; }
+  });
+  const [shiftModal, setShiftModal] = useState(null); // { isoYear, weekNum, weekDates, tmpShifts }
+
+  useEffect(() => {
+    try { localStorage.setItem('family_app_shifts', JSON.stringify(shifts)); } catch {}
+  }, [shifts]);
+
+  const openShiftModal = (isoYear, weekNum) => {
+    const weekDates = getWeekDates(isoYear, weekNum);
+    const tmpShifts = {};
+    weekDates.forEach(d => {
+      const key = toDateKey(d.getFullYear(), d.getMonth(), d.getDate());
+      tmpShifts[key] = shifts[key] || (d.getDay() === 0 ? 'frei' : null); // Sunday is always free by default
+    });
+    setShiftModal({ isoYear, weekNum, weekDates, tmpShifts });
+  };
+
+  const saveShiftModal = () => {
+    setShifts(prev => {
+      const next = { ...prev };
+      shiftModal.weekDates.forEach(d => {
+        const key = toDateKey(d.getFullYear(), d.getMonth(), d.getDate());
+        const val = shiftModal.tmpShifts[key];
+        if (val) next[key] = val; else delete next[key];
+      });
+      return next;
+    });
+    setShiftModal(null);
+  };
 
   const goToPrevMonth = () => {
     if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }
@@ -1158,6 +1218,16 @@ const CalendarView = ({ onBack }) => {
   const cells = [];
   for (let i = 0; i < leadingBlanks; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  // Group cells into week rows (7 cells each)
+  const calRows = [];
+  for (let i = 0; i < cells.length; i += 7) {
+    const rowCells = cells.slice(i, i + 7);
+    while (rowCells.length < 7) rowCells.push(null);
+    const firstRealDay = rowCells.find(d => d !== null);
+    const weekInfo = firstRealDay != null ? getISOWeekInfo(new Date(viewYear, viewMonth, firstRealDay)) : null;
+    calRows.push({ weekInfo, days: rowCells });
+  }
 
   const eventsForDate = (key) => events.filter(e => e.date === key);
 
@@ -1246,48 +1316,78 @@ const CalendarView = ({ onBack }) => {
           </div>
 
           {/* Weekday headers */}
-          <div className="grid grid-cols-7 text-center text-xs font-medium text-gray-400 mb-1">
-            {DOW_ABBR_DE.map(d => <div key={d}>{d}</div>)}
+          <div className="flex mb-1">
+            <div className="w-7 shrink-0 text-center text-[10px] font-medium text-gray-300">KW</div>
+            <div className="flex-1 grid grid-cols-7 text-center text-xs font-medium text-gray-400">
+              {DOW_ABBR_DE.map(d => <div key={d}>{d}</div>)}
+            </div>
           </div>
 
-          {/* Day cells */}
-          <div className="grid grid-cols-7 gap-y-1">
-            {cells.map((day, idx) => {
-              if (day === null) return <div key={`blank-${idx}`} />;
-              const key = toDateKey(viewYear, viewMonth, day);
-              const isToday = key === todayStr;
-              const isSelected = key === selectedDate;
-              const dayEvents = eventsForDate(key);
-              return (
-                <div
-                  key={key}
-                  onClick={() => setSelectedDate(key)}
-                  className="flex flex-col items-center py-0.5 cursor-pointer group"
-                >
-                  <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-colors
-                    ${isToday && isSelected ? 'bg-indigo-600 text-white' :
-                      isToday ? 'bg-indigo-100 text-indigo-700' :
-                      isSelected ? 'bg-gray-200 text-gray-800' :
-                      'text-gray-700 group-hover:bg-gray-100'}`}
-                  >
-                    {day}
-                  </div>
-                  {/* Event dots */}
-                  <div className="flex gap-0.5 mt-0.5 h-1.5">
-                    {dayEvents.slice(0, MAX_EVENT_DOTS_PER_DAY).map(ev => {
-                      const col = CALENDAR_EVENT_COLORS.find(c => c.id === ev.colorId) || CALENDAR_EVENT_COLORS[0];
-                      return <div key={ev.id} className={`w-1.5 h-1.5 rounded-full ${col.dot}`} />;
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          {/* Week rows with KW column */}
+          {calRows.map((row, rowIdx) => (
+            <div key={rowIdx} className="flex mb-0.5">
+              {/* KW number – click to open shift modal */}
+              <div
+                onClick={() => row.weekInfo && openShiftModal(row.weekInfo.isoYear, row.weekInfo.week)}
+                className="w-7 shrink-0 flex items-center justify-center text-[10px] font-semibold text-indigo-400 cursor-pointer hover:bg-indigo-50 rounded-lg select-none"
+              >
+                {row.weekInfo?.week}
+              </div>
+              {/* Day cells */}
+              <div className="flex-1 grid grid-cols-7">
+                {row.days.map((day, i) => {
+                  if (day === null) return <div key={`b-${rowIdx}-${i}`} />;
+                  const key = toDateKey(viewYear, viewMonth, day);
+                  const isToday = key === todayStr;
+                  const isSelected = key === selectedDate;
+                  const dayEvents = eventsForDate(key);
+                  const shift = shifts[key] ? SHIFT_TYPES.find(s => s.id === shifts[key]) : null;
+                  return (
+                    <div
+                      key={key}
+                      onClick={() => setSelectedDate(key)}
+                      className="flex flex-col items-center py-0.5 cursor-pointer group"
+                    >
+                      <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-colors
+                        ${isToday && isSelected ? 'bg-indigo-600 text-white' :
+                          isToday ? 'bg-indigo-100 text-indigo-700' :
+                          isSelected ? 'bg-gray-200 text-gray-800' :
+                          'text-gray-700 group-hover:bg-gray-100'}`}
+                      >
+                        {day}
+                      </div>
+                      {/* Shift badge */}
+                      {shift && (
+                        <div className={`text-[9px] font-bold px-1 leading-none mt-0.5 rounded-full ${shift.bg} ${shift.text}`}>
+                          {shift.abbr}
+                        </div>
+                      )}
+                      {/* Event dots */}
+                      <div className="flex gap-0.5 mt-0.5 h-1.5">
+                        {dayEvents.slice(0, MAX_EVENT_DOTS_PER_DAY).map(ev => {
+                          const col = CALENDAR_EVENT_COLORS.find(c => c.id === ev.colorId) || CALENDAR_EVENT_COLORS[0];
+                          return <div key={ev.id} className={`w-1.5 h-1.5 rounded-full ${col.dot}`} />;
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* Selected day events */}
         <div className="mb-2 flex items-center justify-between px-1">
-          <h3 className="text-base font-semibold text-gray-800">{formatDateLabel(selectedDate)}</h3>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-base font-semibold text-gray-800">{formatDateLabel(selectedDate)}</h3>
+            {shifts[selectedDate] && (() => {
+              const st = SHIFT_TYPES.find(s => s.id === shifts[selectedDate]);
+              return st ? (
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${st.bg} ${st.text}`}>{st.label}</span>
+              ) : null;
+            })()}
+          </div>
           <button
             onClick={() => openCreateModal(selectedDate)}
             className="text-sm text-indigo-600 font-medium hover:bg-indigo-50 px-2 py-1 rounded-full transition-colors"
@@ -1353,6 +1453,50 @@ const CalendarView = ({ onBack }) => {
 
       {/* FAB */}
       <FAB onClick={() => openCreateModal(selectedDate)} icon={Plus} />
+
+      {/* Shift modal */}
+      {shiftModal && (
+        <div className="absolute inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-end justify-center animate-fade-in">
+          <div className="bg-white w-full rounded-t-3xl p-5 shadow-2xl max-h-[85vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold mb-4">KW {shiftModal.weekNum} – Schichten</h3>
+            <div className="space-y-4 mb-5">
+              {shiftModal.weekDates.map((d, i) => {
+                const key = toDateKey(d.getFullYear(), d.getMonth(), d.getDate());
+                const current = shiftModal.tmpShifts[key];
+                return (
+                  <div key={key}>
+                    <div className="text-xs font-semibold text-gray-500 mb-1.5">
+                      {DOW_ABBR_DE[i]}, {d.getDate()}. {MONTH_NAMES_DE[d.getMonth()]} {d.getFullYear()}
+                    </div>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {SHIFT_TYPES.map(st => (
+                        <button
+                          key={st.id}
+                          onClick={() => setShiftModal(prev => ({
+                            ...prev,
+                            tmpShifts: { ...prev.tmpShifts, [key]: current === st.id ? null : st.id }
+                          }))}
+                          className={`px-3 py-1.5 rounded-xl text-sm font-medium transition-all ${current === st.id ? `${st.bg} ${st.text} shadow-sm` : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                        >
+                          {st.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setShiftModal(null)} className="flex-1 py-3 text-gray-500 hover:bg-gray-100 rounded-xl font-medium transition-colors">
+                Abbrechen
+              </button>
+              <button onClick={saveShiftModal} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-medium shadow-lg shadow-indigo-200 transition-colors">
+                Speichern
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Event modal */}
       {showModal && (
