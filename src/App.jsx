@@ -3927,7 +3927,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#f0f4f8] font-sans text-gray-900 flex justify-center">
-      <div className="w-full max-w-md bg-[#fdfdfd] min-h-screen shadow-2xl overflow-y-auto">
+      <div className="w-full max-w-md bg-[#fdfdfd] min-h-screen shadow-2xl overflow-y-auto safe-area-pt">
 
         {/* App top bar with settings button */}
         <div className="flex items-center justify-end px-5 pt-4">

@@ -22,6 +22,11 @@ body {
   scrollbar-width: none;  /* Firefox */
 }
 
+/* Safe-area top padding – moves content below the camera module / notch */
+.safe-area-pt {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
 /* Definition der Fade-In Animation */
 @keyframes fade-in {
   from { 
