@@ -111,7 +111,6 @@ html.dark {
   background: color-mix(in oklch, var(--m3-tertiary) 24%, var(--m3-surface-container));
   color: var(--m3-on-tertiary);
 }
-}
 
 /* Versteckt Scrollbars in Chrome/Safari/Opera (für die horizontale Kachelliste) */
 .no-scrollbar::-webkit-scrollbar {
