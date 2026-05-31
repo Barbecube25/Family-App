@@ -361,7 +361,7 @@ const Header = ({ title, onBack, rightAction }) => (
   <div className="flex items-center justify-between p-4 pb-2">
     <div className="flex items-center">
       {onBack && (
-        <button onClick={onBack} className="p-2 mr-2 hover:bg-gray-100 rounded-full transition-colors">
+        <button onClick={onBack} className="m3e-icon-button p-2 mr-2 hover:bg-gray-100 transition-colors">
           <ArrowLeft size={24} className="text-gray-700" />
         </button>
       )}
@@ -374,7 +374,7 @@ const Header = ({ title, onBack, rightAction }) => (
 const FAB = ({ onClick, icon: Icon }) => (
   <button 
     onClick={onClick}
-    className="fixed bottom-6 right-6 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl shadow-xl shadow-indigo-200 flex items-center justify-center transition-transform active:scale-95 z-50"
+    className="m3e-fab fixed bottom-6 right-6 w-14 h-14 hover:bg-indigo-700 rounded-2xl shadow-xl shadow-indigo-200 flex items-center justify-center transition-transform active:scale-95 z-50"
   >
     <Icon size={24} />
   </button>
@@ -385,7 +385,7 @@ const DailyOverviewTile = ({ offset, setOffset, onWeatherClick }) => {
   const WeatherIcon = data.weather.icon;
 
   return (
-    <div className="mx-4 mt-6 mb-2 bg-gray-900 rounded-[2rem] p-6 text-white shadow-xl relative overflow-hidden transition-all duration-500">
+    <div className="m3e-surface mx-4 mt-6 mb-2 bg-gray-900 rounded-[2rem] p-6 text-white shadow-xl relative overflow-hidden transition-all duration-300">
       <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse"></div>
       <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20"></div>
 
@@ -3734,7 +3734,7 @@ const PackagesView = ({ onBack }) => {
 const DashboardTile = ({ icon: Icon, title, subtitle, color, onClick, span = "col-span-1" }) => (
   <div 
     onClick={onClick}
-    className={`relative overflow-hidden group p-5 rounded-3xl bg-white hover:bg-gray-50 transition-all duration-300 cursor-pointer shadow-sm hover:shadow-md border border-gray-100 flex flex-col justify-between h-36 ${span}`}
+    className={`m3e-surface m3e-feature-card relative overflow-hidden group p-5 rounded-3xl bg-white hover:bg-gray-50 transition-all duration-300 cursor-pointer shadow-sm hover:shadow-md border border-gray-100 flex flex-col justify-between h-36 ${span}`}
   >
     <div className={`absolute top-0 right-0 p-20 rounded-full opacity-5 translate-x-8 -translate-y-8 ${color}`}></div>
     
@@ -3920,20 +3920,20 @@ export default function App() {
   };
 
   if (currentView !== 'dashboard') {
-    return <div className="min-h-screen bg-gray-50 font-sans text-gray-900 max-w-md mx-auto shadow-2xl overflow-hidden relative">
+    return <div className="m3e-app min-h-screen bg-gray-50 font-sans text-gray-900 max-w-md mx-auto shadow-2xl overflow-hidden relative">
       {renderView()}
     </div>;
   }
 
   return (
-    <div className="min-h-screen bg-[#f0f4f8] font-sans text-gray-900 flex justify-center">
-      <div className="w-full max-w-md bg-[#fdfdfd] min-h-screen shadow-2xl overflow-y-auto">
+    <div className="m3e-app min-h-screen bg-[#f0f4f8] font-sans text-gray-900 flex justify-center">
+      <div className="m3e-surface w-full max-w-md bg-[#fdfdfd] min-h-screen shadow-2xl overflow-y-auto">
 
         {/* App top bar with settings button */}
         <div className="flex items-center justify-end px-5 pt-4">
           <button
             onClick={() => setCurrentView('settings')}
-            className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+            className="m3e-icon-button p-2 rounded-full hover:bg-gray-100 transition-colors"
             aria-label="Einstellungen"
           >
             <Settings size={20} className="text-gray-500" />
