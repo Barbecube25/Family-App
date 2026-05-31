@@ -380,7 +380,7 @@ const FAB = ({ onClick, icon: Icon }) => (
   </button>
 );
 
-const DailyOverviewTile = ({ offset, setOffset, onWeatherClick }) => {
+const DailyOverviewTile = ({ offset, setOffset, onWeatherClick, quickOverviewItems = [], onQuickOverviewClick }) => {
   const data = getDailySummary(offset);
   const WeatherIcon = data.weather.icon;
 
@@ -410,6 +410,27 @@ const DailyOverviewTile = ({ offset, setOffset, onWeatherClick }) => {
             <Sparkles className="text-yellow-300 shrink-0 mt-1" size={20} />
             <p className="text-lg leading-snug font-light text-gray-100">{data.summary}</p>
           </div>
+
+          {quickOverviewItems.length > 0 && (
+            <div className="bg-white/15 rounded-2xl p-3 backdrop-blur-md border border-white/20">
+              <div className="text-xs font-semibold uppercase tracking-wider text-indigo-100">Schnellübersicht</div>
+              <div className="mt-2 space-y-2">
+                {quickOverviewItems.map((item) => (
+                  <button
+                    key={item.view}
+                    onClick={() => onQuickOverviewClick?.(item.view)}
+                    className="w-full text-left flex items-center justify-between gap-3 bg-white/10 hover:bg-white/20 rounded-xl px-3 py-2 transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-white truncate">{item.title}</div>
+                      <div className="text-xs text-indigo-100 truncate">{item.subtitle}</div>
+                    </div>
+                    <ArrowRight size={16} className="text-indigo-100 shrink-0" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div onClick={onWeatherClick} className="bg-white/10 rounded-2xl p-3 flex items-center justify-between mt-2 backdrop-blur-md cursor-pointer hover:bg-white/20 transition-colors">
             <div className="flex items-center gap-3">
@@ -3746,7 +3767,7 @@ const DashboardTile = ({ icon: Icon, title, subtitle, color, onClick, span = "co
     
     <div className="z-10">
       <h3 className="text-lg font-medium text-gray-800 leading-tight">{title}</h3>
-      {subtitle && <p className="text-sm text-gray-500 mt-1 truncate">{subtitle}</p>}
+      {subtitle && <p className="text-sm text-gray-600 font-medium mt-1 truncate">{subtitle}</p>}
     </div>
   </div>
 );
@@ -3825,6 +3846,35 @@ const SettingsView = ({ onBack, darkModePreference, setDarkModePreference, sunTi
   );
 };
 
+const parseDateKey = (dateKey, fallbackTime = '23:59') => {
+  if (!dateKey) return null;
+  const dt = new Date(`${dateKey}T${fallbackTime}`);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+};
+
+const dashboardDateLabel = (date, time) => {
+  if (!date) return 'Bald';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const value = `${time ? `${time} · ` : ''}`;
+  if (date.getTime() >= today.getTime() && date.getTime() < tomorrow.getTime()) return `Heute · ${value}`.trim();
+  if (date.getTime() >= tomorrow.getTime() && date.getTime() < tomorrow.getTime() + 86400000) return `Morgen · ${value}`.trim();
+  return `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}. · ${value}`.trim();
+};
+
+const readStorageJSON = (key, fallback) => {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+};
+
 export default function App() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [dayOffset, setDayOffset] = useState(0);
@@ -3835,6 +3885,62 @@ export default function App() {
     try { return localStorage.getItem('family_app_dark_mode') || 'auto'; } catch { return 'auto'; }
   });
   const [sunTimes, setSunTimes] = useState(null);
+
+  const dashboardTiles = useMemo(() => {
+    const shoppingLists = readStorageJSON('family_app_shopping_lists', INITIAL_SHOPPING_LISTS);
+    const shoppingSubtitle = `${shoppingLists.length} ${shoppingLists.length === 1 ? 'Liste aktiv' : 'Listen aktiv'}`;
+
+    const calendarEvents = readStorageJSON('family_app_calendar_events', []);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const nextCalendar = [...calendarEvents]
+      .map(ev => ({ ...ev, dt: parseDateKey(ev.date, ev.time || '23:59') }))
+      .filter(ev => ev.dt && ev.dt >= today)
+      .sort((a, b) => a.dt - b.dt)[0];
+    const calendarSubtitle = nextCalendar
+      ? `${dashboardDateLabel(nextCalendar.dt, nextCalendar.time || '')}${nextCalendar.title ? ` ${nextCalendar.title}` : ''}`.trim()
+      : 'Keine Termine';
+
+    const dailyTasks = readStorageJSON('family_app_daily_tasks', []);
+    const openDailyTasks = dailyTasks.filter(t => !t.done);
+    const tasksSubtitle = openDailyTasks.length > 0
+      ? `${openDailyTasks.length} offen`
+      : 'Alles erledigt';
+
+    const budgets = readStorageJSON('family_app_budgets', INITIAL_BUDGETS);
+    const sonjaSummary = calcBudgetSummary(budgets.sonja || INITIAL_BUDGETS.sonja);
+    const michaelSummary = calcBudgetSummary(budgets.michael || INITIAL_BUDGETS.michael);
+    const monthlyBalance = sonjaSummary.monthlyBalance + michaelSummary.monthlyBalance;
+    const financeSubtitle = `Saldo ${monthlyBalance >= 0 ? '+' : '-'}${formatEur(Math.abs(monthlyBalance))}/Mo`;
+
+    const packages = readStorageJSON('family_app_packages', INITIAL_PACKAGES);
+    const unterwegsCount = Array.isArray(packages?.unterwegs) ? packages.unterwegs.length : 0;
+    const packagesSubtitle = `${unterwegsCount} ${unterwegsCount === 1 ? 'unterwegs' : 'unterwegs'}`;
+
+    const packingLists = readStorageJSON('family_app_packing_lists', INITIAL_PACKING_LISTS);
+    const packingSubtitle = packingLists.length > 0
+      ? packingLists[0].name
+      : 'Keine Liste';
+
+    const orgaLists = readStorageJSON('family_app_orga_lists', INITIAL_ORGA_LISTS);
+    const orgaSubtitle = `${orgaLists.length} ${orgaLists.length === 1 ? 'Liste' : 'Listen'}`;
+
+    return [
+      { view: 'shopping', icon: ShoppingCart, title: 'Einkauf', subtitle: shoppingSubtitle, color: 'bg-indigo-400' },
+      { view: 'calendar', icon: Calendar, title: 'Kalender', subtitle: calendarSubtitle, color: 'bg-red-400' },
+      { view: 'tasks', icon: CheckSquare, title: 'Aufgaben', subtitle: tasksSubtitle, color: 'bg-green-500' },
+      { view: 'finance', icon: Wallet, title: 'Finanzen', subtitle: financeSubtitle, color: 'bg-emerald-500' },
+      { view: 'trash', icon: Trash2, title: 'Müll', subtitle: getNextTrashSummary(), color: 'bg-gray-600' },
+      { view: 'packages', icon: Package, title: 'Pakete', subtitle: packagesSubtitle, color: 'bg-amber-500' },
+      { view: 'packing', icon: Backpack, title: 'Packliste', subtitle: packingSubtitle, color: 'bg-rose-400' },
+      { view: 'orga', icon: FolderOpen, title: 'Orga', subtitle: orgaSubtitle, color: 'bg-purple-400' },
+    ];
+  }, [currentView]);
+
+  const quickOverviewItems = useMemo(
+    () => dashboardTiles.filter(tile => ['calendar', 'tasks', 'trash', 'shopping'].includes(tile.view)),
+    [dashboardTiles]
+  );
 
   // Persist preference
   useEffect(() => {
@@ -3944,73 +4050,21 @@ export default function App() {
             offset={dayOffset} 
             setOffset={setDayOffset} 
             onWeatherClick={() => setCurrentView('weather')}
+            quickOverviewItems={quickOverviewItems}
+            onQuickOverviewClick={(view) => setCurrentView(view)}
         />
 
         <div className="px-4 py-2 grid grid-cols-2 gap-3 pb-24">
-            
-            <DashboardTile 
-                onClick={() => setCurrentView('shopping')}
-                icon={ShoppingCart}
-                title="Einkauf"
-                subtitle="3 Listen aktiv"
-                color="bg-indigo-400"
-            />
-
-            <DashboardTile 
-                onClick={() => setCurrentView('calendar')}
-                icon={Calendar}
-                title="Kalender"
-                subtitle="Elternabend 19:00"
-                color="bg-red-400"
-            />
-
-            <DashboardTile 
-                onClick={() => setCurrentView('tasks')}
-                icon={CheckSquare}
-                title="Aufgaben"
-                subtitle="Max: Spülmaschine"
-                color="bg-green-500"
-            />
-
-            <DashboardTile 
-                onClick={() => setCurrentView('finance')}
-                icon={Wallet}
-                title="Finanzen"
-                subtitle="Budget OK"
-                color="bg-emerald-500"
-            />
-
-            <DashboardTile 
-                onClick={() => setCurrentView('trash')}
-                icon={Trash2}
-                title="Müll"
-                subtitle={getNextTrashSummary()}
-                color="bg-gray-600"
-            />
-
-            <DashboardTile 
-                onClick={() => setCurrentView('packages')}
-                icon={Package}
-                title="Pakete"
-                subtitle="2 unterwegs"
-                color="bg-amber-500"
-            />
-
-             <DashboardTile 
-                onClick={() => setCurrentView('packing')}
-                icon={Backpack}
-                title="Packliste"
-                subtitle="Urlaub Herbst"
-                color="bg-rose-400"
-            />
-
-             <DashboardTile 
-                onClick={() => setCurrentView('orga')}
-                icon={FolderOpen}
-                title="Orga"
-                subtitle="Docs & Kontakte"
-                color="bg-purple-400"
-            />
+            {dashboardTiles.map((tile) => (
+              <DashboardTile
+                key={tile.view}
+                onClick={() => setCurrentView(tile.view)}
+                icon={tile.icon}
+                title={tile.title}
+                subtitle={tile.subtitle}
+                color={tile.color}
+              />
+            ))}
         </div>
 
       </div>
