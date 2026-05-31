@@ -1132,10 +1132,47 @@ const ENTRY_TYPE_LABELS = { abo: 'Abo', rate: 'Ratenzahlung', abbuchung: 'Abbuch
 const INITIAL_BUDGETS = {
   sonja: { income: [], abos: [], rates: [], abbuchungen: [], haushaltsBeitrag: 0 },
   michael: { income: [], abos: [], rates: [], abbuchungen: [], haushaltsBeitrag: 0 },
+  haus: [],
 };
 
 const formatEur = (val) =>
   Number(val).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+
+const formatDueDate = (value) => {
+  if (!value) return '—';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
+
+const normalizeBudget = (budget, fallback) => {
+  const base = budget && typeof budget === 'object' ? budget : {};
+  return {
+    ...fallback,
+    ...base,
+    income: Array.isArray(base.income) ? base.income : [],
+    abos: Array.isArray(base.abos) ? base.abos : [],
+    rates: Array.isArray(base.rates) ? base.rates : [],
+    abbuchungen: Array.isArray(base.abbuchungen) ? base.abbuchungen : [],
+  };
+};
+
+const normalizeBudgets = (value) => {
+  const base = value && typeof value === 'object' ? value : {};
+  return {
+    sonja: normalizeBudget(base.sonja, INITIAL_BUDGETS.sonja),
+    michael: normalizeBudget(base.michael, INITIAL_BUDGETS.michael),
+    haus: Array.isArray(base.haus)
+      ? base.haus.map(entry => ({
+          ...entry,
+          title: entry?.title || '',
+          amount: entry?.amount || '',
+          interval: entry?.interval && INTERVAL_MONTHS[entry.interval] ? entry.interval : 'monthly',
+          dueDate: entry?.dueDate || '',
+        }))
+      : [],
+  };
+};
 
 const calcMonthlyAmount = (amount, interval) =>
   parseFloat(amount || 0) / (INTERVAL_MONTHS[interval] || 1);
@@ -1579,11 +1616,173 @@ const HaushaltView = ({ budgets, onBack }) => {
   );
 };
 
+const EMPTY_HAUS_FORM = {
+  title: '',
+  amount: '',
+  dueDate: '',
+  interval: 'monthly',
+};
+
+const HausEntryModal = ({ initial, onSave, onClose }) => {
+  const [form, setForm] = useState(initial || EMPTY_HAUS_FORM);
+  const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
+
+  const handleSave = () => {
+    const amount = parseFloat(form.amount || 0);
+    if (!form.title.trim() || !form.dueDate || !amount || amount <= 0) return;
+    onSave({
+      ...form,
+      title: form.title.trim(),
+      amount: amount.toFixed(2),
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
+      <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-4 sm:mb-0 space-y-4">
+        <h3 className="text-lg font-semibold">{initial ? 'Haus-Ausgabe bearbeiten' : 'Neue Haus-Ausgabe'}</h3>
+        <input
+          className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+          placeholder="Bezeichnung"
+          value={form.title}
+          onChange={e => set('title', e.target.value)}
+        />
+        <input
+          className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+          placeholder="Betrag (€)"
+          type="number"
+          min="0"
+          step="0.01"
+          value={form.amount}
+          onChange={e => set('amount', e.target.value)}
+        />
+        <input
+          className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+          type="date"
+          value={form.dueDate}
+          onChange={e => set('dueDate', e.target.value)}
+        />
+        <select
+          className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white"
+          value={form.interval}
+          onChange={e => set('interval', e.target.value)}
+        >
+          {Object.entries(INTERVAL_LABELS).map(([key, label]) => (
+            <option key={key} value={key}>{label}</option>
+          ))}
+        </select>
+        <div className="flex gap-3 pt-2">
+          <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-gray-100 text-gray-700 font-medium text-sm">Abbrechen</button>
+          <button onClick={handleSave} className="flex-1 py-3 rounded-xl bg-emerald-600 text-white font-medium text-sm">Speichern</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const HausView = ({ entries, onUpdateEntries, onBack }) => {
+  const [showModal, setShowModal] = useState(false);
+  const [editEntry, setEditEntry] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+
+  const sortedEntries = [...entries].sort((a, b) => {
+    const dateA = new Date(a.dueDate || 0).getTime();
+    const dateB = new Date(b.dueDate || 0).getTime();
+    return dateA - dateB;
+  });
+
+  const monthlyTotal = entries.reduce((sum, entry) => {
+    return sum + calcMonthlyAmount(entry.amount, entry.interval || 'monthly');
+  }, 0);
+
+  const handleSave = (form) => {
+    if (editEntry) {
+      onUpdateEntries(prev => prev.map(entry => entry.id === editEntry.id ? { ...form, id: editEntry.id } : entry));
+    } else {
+      onUpdateEntries(prev => [...prev, { ...form, id: crypto.randomUUID() }]);
+    }
+    setShowModal(false);
+    setEditEntry(null);
+  };
+
+  return (
+    <div className="animate-fade-in min-h-screen bg-gray-50">
+      <Header title="Haus" onBack={onBack} />
+      <div className="px-4 pb-24 space-y-4">
+        <div className="bg-emerald-600 rounded-3xl p-5 text-white">
+          <div className="text-xs opacity-80 uppercase tracking-widest mb-1">Haus-Ausgaben</div>
+          <div className="text-3xl font-semibold">{formatEur(monthlyTotal)}<span className="text-base font-normal opacity-70">/Mo</span></div>
+          <div className="text-xs opacity-70 mt-1">Basierend auf dem gewählten Intervall</div>
+        </div>
+
+        <div className="bg-white rounded-3xl p-4 shadow-sm border border-gray-100">
+          <h4 className="text-sm font-semibold mb-3 text-gray-700">Alle Haus-Kosten</h4>
+          {sortedEntries.length === 0 ? (
+            <p className="text-xs text-gray-400 italic">Noch keine Einträge</p>
+          ) : (
+            <div className="space-y-2">
+              {sortedEntries.map(entry => (
+                <div key={entry.id} className="flex items-start justify-between gap-2 py-2 px-3 rounded-2xl bg-gray-50">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-800 truncate">{entry.title}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {formatEur(entry.amount)} · fällig: {formatDueDate(entry.dueDate)} · {INTERVAL_LABELS[entry.interval] || INTERVAL_LABELS.monthly}
+                    </div>
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <button onClick={() => { setEditEntry(entry); setShowModal(true); }} className="p-1.5 text-gray-400 hover:text-blue-500 rounded-full transition-colors">
+                      <Edit2 size={14} />
+                    </button>
+                    <button onClick={() => setDeleteConfirm(entry)} className="p-1.5 text-gray-400 hover:text-red-500 rounded-full transition-colors">
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <FAB onClick={() => { setEditEntry(null); setShowModal(true); }} icon={Plus} />
+
+      {showModal && (
+        <HausEntryModal
+          initial={editEntry || EMPTY_HAUS_FORM}
+          onSave={handleSave}
+          onClose={() => { setShowModal(false); setEditEntry(null); }}
+        />
+      )}
+
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl mb-4 sm:mb-0">
+            <h3 className="text-lg font-semibold mb-1">Eintrag löschen?</h3>
+            <p className="text-sm text-gray-500 mb-5">&ldquo;{deleteConfirm.title}&rdquo;</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-3 rounded-xl bg-gray-100 text-gray-700 font-medium text-sm">Abbrechen</button>
+              <button
+                onClick={() => {
+                  onUpdateEntries(prev => prev.filter(entry => entry.id !== deleteConfirm.id));
+                  setDeleteConfirm(null);
+                }}
+                className="flex-1 py-3 rounded-xl bg-red-500 text-white font-medium text-sm"
+              >
+                Löschen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const FinanceView = ({ onBack }) => {
   const [budgets, setBudgets] = useState(() => {
     try {
       const saved = localStorage.getItem('family_app_budgets');
-      return saved ? JSON.parse(saved) : INITIAL_BUDGETS;
+      return saved ? normalizeBudgets(JSON.parse(saved)) : INITIAL_BUDGETS;
     } catch {
       return INITIAL_BUDGETS;
     }
@@ -1593,7 +1792,7 @@ const FinanceView = ({ onBack }) => {
     try { localStorage.setItem('family_app_budgets', JSON.stringify(budgets)); } catch {}
   }, [budgets]);
 
-  const [subView, setSubView] = useState(null); // null | 'sonja' | 'michael' | 'haushalt'
+  const [subView, setSubView] = useState(null); // null | 'sonja' | 'michael' | 'haushalt' | 'haus'
 
   const updateBudget = (person, updater) => {
     setBudgets(prev => ({ ...prev, [person]: updater(prev[person]) }));
@@ -1607,6 +1806,15 @@ const FinanceView = ({ onBack }) => {
   }
   if (subView === 'haushalt') {
     return <HaushaltView budgets={budgets} onBack={() => setSubView(null)} />;
+  }
+  if (subView === 'haus') {
+    return (
+      <HausView
+        entries={Array.isArray(budgets.haus) ? budgets.haus : []}
+        onUpdateEntries={updater => setBudgets(prev => ({ ...prev, haus: updater(Array.isArray(prev.haus) ? prev.haus : []) }))}
+        onBack={() => setSubView(null)}
+      />
+    );
   }
 
   const sonjaSummary = calcBudgetSummary(budgets.sonja);
@@ -1633,6 +1841,7 @@ const FinanceView = ({ onBack }) => {
         {[
           { key: 'sonja', label: 'Sonja', summary: sonjaSummary, color: 'bg-indigo-500' },
           { key: 'michael', label: 'Michael', summary: michaelSummary, color: 'bg-purple-500' },
+          { key: 'haus', label: 'Haus', summary: { monthlyBalance: budgets.haus.reduce((sum, entry) => sum + calcMonthlyAmount(entry.amount, entry.interval || 'monthly'), 0) * -1, monthlyIncome: 0, monthlyExpenses: budgets.haus.reduce((sum, entry) => sum + calcMonthlyAmount(entry.amount, entry.interval || 'monthly'), 0) }, color: 'bg-amber-500' },
         ].map(({ key, label, summary, color }) => (
           <div
             key={key}
