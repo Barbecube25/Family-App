@@ -220,7 +220,74 @@ const INITIAL_PACKING_LISTS = [
   },
 ];
 
-const getDailySummary = (offset) => {
+const readLocalStorageJson = (key, fallback) => {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const getTodayDateKey = () => {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+};
+
+const buildDashboardSnapshot = () => {
+  const shoppingLists = readLocalStorageJson('family_app_shopping_lists', INITIAL_SHOPPING_LISTS) || [];
+  const dailyTasks = readLocalStorageJson('family_app_daily_tasks', []) || [];
+  const taskLists = readLocalStorageJson('family_app_task_lists', []) || [];
+  const calendarEvents = readLocalStorageJson('family_app_calendar_events', []) || [];
+  const todayKey = getTodayDateKey();
+
+  const shoppingOpenCount = shoppingLists.reduce(
+    (total, list) => total + (list?.items?.filter(item => !item.done).length || 0),
+    0
+  );
+  const shoppingSubtitle = shoppingLists.length === 0
+    ? 'Keine Listen'
+    : `${shoppingLists.length} Listen · ${shoppingOpenCount} offen`;
+
+  const todayEvents = [...calendarEvents]
+    .filter(event => event.date === todayKey)
+    .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+  const nextEvent = todayEvents[0] || null;
+  const calendarSubtitle = nextEvent
+    ? `${nextEvent.title}${nextEvent.time ? ` ${nextEvent.time}` : ''}`
+    : 'Keine Termine heute';
+
+  const openDailyTasks = dailyTasks.filter(task => !task.done).length;
+  const openListTasks = taskLists.reduce(
+    (total, list) => total + (list?.items?.filter(item => !item.done).length || 0),
+    0
+  );
+  const tasksSubtitle = openDailyTasks > 0
+    ? `${openDailyTasks} heute offen`
+    : openListTasks > 0
+      ? `${openListTasks} in Listen offen`
+      : 'Alles erledigt';
+
+  const importantTaskList = taskLists.find(list => list.todayImportant) || null;
+  const importantTaskListOpenCount = importantTaskList
+    ? importantTaskList.items.filter(item => !item.done).length
+    : 0;
+
+  return {
+    shoppingSubtitle,
+    calendarSubtitle,
+    tasksSubtitle,
+    trashSubtitle: getNextTrashSummary(),
+    shoppingOpenCount,
+    openDailyTasks,
+    nextEvent,
+    importantTaskList,
+    importantTaskListOpenCount,
+  };
+};
+
+const getDailySummary = (offset, snapshot) => {
   const days = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
   const months = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
   
@@ -234,7 +301,30 @@ const getDailySummary = (offset) => {
   let weather = {};
 
   if (offset === 0) {
-    summary = "Guten Morgen! Heute steht der Elternabend um 19:00 Uhr an. Max ist für die Spülmaschine eingeteilt. Vergiss nicht, morgen ist Restmüll!";
+    const parts = [];
+    if (snapshot?.nextEvent) {
+      parts.push(`${snapshot.calendarSubtitle}.`);
+    } else {
+      parts.push('Heute sind aktuell keine Kalendereinträge geplant.');
+    }
+
+    if ((snapshot?.openDailyTasks || 0) > 0) {
+      parts.push(`${snapshot.openDailyTasks} Tagesaufgabe${snapshot.openDailyTasks === 1 ? '' : 'n'} ist noch offen.`);
+    }
+
+    if ((snapshot?.shoppingOpenCount || 0) > 0) {
+      parts.push(`Auf den Einkaufslisten sind noch ${snapshot.shoppingOpenCount} Punkt${snapshot.shoppingOpenCount === 1 ? '' : 'e'} offen.`);
+    }
+
+    if (snapshot?.importantTaskList) {
+      parts.push(`Heute wichtig: ${snapshot.importantTaskList.name} (${snapshot.importantTaskListOpenCount} offen).`);
+    }
+
+    if (snapshot?.trashSubtitle && snapshot.trashSubtitle !== '—') {
+      parts.push(`Müllplan: ${snapshot.trashSubtitle}.`);
+    }
+
+    summary = parts.join(' ');
     weather = { icon: CloudSun, temp: "18°", desc: "Teils bewölkt", range: "12° - 21°" };
   } else if (offset === 1) {
     summary = "Morgen hat Max Fußballtraining (16:30). Denk an den Restmüll! Das Wetter wird sonnig, perfekt für den Garten.";
@@ -380,8 +470,8 @@ const FAB = ({ onClick, icon: Icon }) => (
   </button>
 );
 
-const DailyOverviewTile = ({ offset, setOffset, onWeatherClick }) => {
-  const data = getDailySummary(offset);
+const DailyOverviewTile = ({ offset, setOffset, onWeatherClick, dashboardSnapshot, onImportantListClick }) => {
+  const data = getDailySummary(offset, dashboardSnapshot);
   const WeatherIcon = data.weather.icon;
 
   return (
@@ -410,6 +500,18 @@ const DailyOverviewTile = ({ offset, setOffset, onWeatherClick }) => {
             <Sparkles className="text-yellow-300 shrink-0 mt-1" size={20} />
             <p className="text-lg leading-snug font-light text-gray-100">{data.summary}</p>
           </div>
+
+          {offset === 0 && dashboardSnapshot?.importantTaskList && onImportantListClick && (
+            <button
+              onClick={() => onImportantListClick(dashboardSnapshot.importantTaskList.id)}
+              className="w-full bg-white/10 rounded-2xl p-3 text-left hover:bg-white/20 transition-colors"
+            >
+              <div className="text-xs uppercase tracking-wider text-indigo-200">Heute wichtige Liste</div>
+              <div className="text-sm font-medium text-white mt-0.5">
+                {dashboardSnapshot.importantTaskList.name} · {dashboardSnapshot.importantTaskListOpenCount} offen
+              </div>
+            </button>
+          )}
 
           <div onClick={onWeatherClick} className="bg-white/10 rounded-2xl p-3 flex items-center justify-between mt-2 backdrop-blur-md cursor-pointer hover:bg-white/20 transition-colors">
             <div className="flex items-center gap-3">
@@ -2088,7 +2190,7 @@ const CalendarView = ({ onBack }) => {
   );
 };
 
-const TaskView = ({ onBack, onNavigateToShopping }) => {
+const TaskView = ({ onBack, onNavigateToShopping, initialListId }) => {
   const LONG_PRESS_MS = 450;
   const SUPPRESS_MS = 350;
 
@@ -2146,7 +2248,7 @@ const TaskView = ({ onBack, onNavigateToShopping }) => {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [activeListId, setActiveListId] = useState(null);
+  const [activeListId, setActiveListId] = useState(initialListId || null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editListId, setEditListId] = useState(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
@@ -2162,6 +2264,10 @@ const TaskView = ({ onBack, onNavigateToShopping }) => {
   const [bulkDrag, setBulkDrag] = useState(false);
   const longPressRef = useRef(null);
   const suppressRef = useRef(0);
+
+  useEffect(() => {
+    if (initialListId) setActiveListId(initialListId);
+  }, [initialListId]);
 
   const stopLongPress = () => {
     if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; }
@@ -2211,7 +2317,7 @@ const TaskView = ({ onBack, onNavigateToShopping }) => {
     if (!name) return;
     setLists(prev => [...prev, {
       id: crypto.randomUUID(), name,
-      color: TASK_COLORS[prev.length % TASK_COLORS.length], items: [],
+      color: TASK_COLORS[prev.length % TASK_COLORS.length], items: [], todayImportant: false,
     }]);
     setShowCreateModal(false);
     setModalName('');
@@ -2229,6 +2335,16 @@ const TaskView = ({ onBack, onNavigateToShopping }) => {
     setLists(prev => prev.filter(l => l.id !== deleteConfirmId));
     if (activeListId === deleteConfirmId) setActiveListId(null);
     setDeleteConfirmId(null);
+  };
+
+  const toggleTodayImportantList = (listId) => {
+    setLists(prev => {
+      const alreadyImportant = prev.some(list => list.id === listId && list.todayImportant);
+      return prev.map(list => ({
+        ...list,
+        todayImportant: alreadyImportant ? false : list.id === listId,
+      }));
+    });
   };
 
   const addListItem = () => {
@@ -2590,9 +2706,23 @@ const TaskView = ({ onBack, onNavigateToShopping }) => {
                     <p className="text-sm text-gray-500 mt-1">
                       {list.items.length === 0 ? 'Keine Aufgaben' : `${openCount}/${list.items.length} offen`}
                     </p>
+                    {list.todayImportant && (
+                      <p className="text-xs font-semibold text-amber-600 mt-1">Heute wichtig</p>
+                    )}
                   </div>
                 </div>
                 <div className="absolute top-2 right-2 flex gap-1">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleTodayImportantList(list.id); }}
+                    className={`w-7 h-7 rounded-full shadow-md flex items-center justify-center transition-colors ${
+                      list.todayImportant
+                        ? 'bg-amber-100 text-amber-600 hover:text-amber-700'
+                        : 'bg-white text-gray-400 hover:text-amber-500'
+                    }`}
+                    title={list.todayImportant ? 'Nicht mehr heute wichtig' : 'Als heute wichtig markieren'}
+                  >
+                    <Sparkles size={13} />
+                  </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); setModalName(list.name); setEditListId(list.id); }}
                     className="w-7 h-7 bg-white rounded-full shadow-md flex items-center justify-center text-gray-400 hover:text-green-500 transition-colors"
@@ -3829,6 +3959,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [dayOffset, setDayOffset] = useState(0);
   const [shoppingInitialListId, setShoppingInitialListId] = useState(null);
+  const [taskInitialListId, setTaskInitialListId] = useState(null);
 
   // ── Dark Mode State ────────────────────────────────────────────
   const [darkModePreference, setDarkModePreference] = useState(() => {
@@ -3902,6 +4033,11 @@ export default function App() {
     }
     window.history.pushState({ view: currentView }, '', currentUrl);
   }, [currentView]);
+
+  const dashboardSnapshot = useMemo(
+    () => buildDashboardSnapshot(),
+    [currentView]
+  );
   
   const renderView = () => {
     switch(currentView) {
@@ -3909,7 +4045,7 @@ export default function App() {
       case 'finance': return <FinanceView onBack={() => setCurrentView('dashboard')} />;
       case 'trash': return <TrashView onBack={() => setCurrentView('dashboard')} />;
       case 'calendar': return <CalendarView onBack={() => setCurrentView('dashboard')} />;
-      case 'tasks': return <TaskView onBack={() => setCurrentView('dashboard')} onNavigateToShopping={(listId) => { setShoppingInitialListId(listId); setCurrentView('shopping'); }} />;
+      case 'tasks': return <TaskView onBack={() => { setTaskInitialListId(null); setCurrentView('dashboard'); }} onNavigateToShopping={(listId) => { setShoppingInitialListId(listId); setCurrentView('shopping'); }} initialListId={taskInitialListId} />;
       case 'packages': return <PackagesView onBack={() => setCurrentView('dashboard')} />;
       case 'weather': return <PlaceholderView title="Wetter Details" icon={CloudSun} color="bg-sky-500" onBack={() => setCurrentView('dashboard')} />;
       case 'packing': return <PackingView onBack={() => setCurrentView('dashboard')} />;
@@ -3944,6 +4080,11 @@ export default function App() {
             offset={dayOffset} 
             setOffset={setDayOffset} 
             onWeatherClick={() => setCurrentView('weather')}
+            dashboardSnapshot={dashboardSnapshot}
+            onImportantListClick={(listId) => {
+              setTaskInitialListId(listId);
+              setCurrentView('tasks');
+            }}
         />
 
         <div className="px-4 py-2 grid grid-cols-2 gap-3 pb-24">
@@ -3952,7 +4093,7 @@ export default function App() {
                 onClick={() => setCurrentView('shopping')}
                 icon={ShoppingCart}
                 title="Einkauf"
-                subtitle="3 Listen aktiv"
+                subtitle={dashboardSnapshot.shoppingSubtitle}
                 color="bg-indigo-400"
             />
 
@@ -3960,15 +4101,15 @@ export default function App() {
                 onClick={() => setCurrentView('calendar')}
                 icon={Calendar}
                 title="Kalender"
-                subtitle="Elternabend 19:00"
+                subtitle={dashboardSnapshot.calendarSubtitle}
                 color="bg-red-400"
             />
 
             <DashboardTile 
-                onClick={() => setCurrentView('tasks')}
+                onClick={() => { setTaskInitialListId(null); setCurrentView('tasks'); }}
                 icon={CheckSquare}
                 title="Aufgaben"
-                subtitle="Max: Spülmaschine"
+                subtitle={dashboardSnapshot.tasksSubtitle}
                 color="bg-green-500"
             />
 
@@ -3984,7 +4125,7 @@ export default function App() {
                 onClick={() => setCurrentView('trash')}
                 icon={Trash2}
                 title="Müll"
-                subtitle={getNextTrashSummary()}
+                subtitle={dashboardSnapshot.trashSubtitle}
                 color="bg-gray-600"
             />
 
