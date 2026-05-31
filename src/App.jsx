@@ -3858,10 +3858,11 @@ const dashboardDateLabel = (date, time) => {
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const value = `${time ? `${time} · ` : ''}`;
-  if (date.getTime() >= today.getTime() && date.getTime() < tomorrow.getTime()) return `Heute · ${value}`.trim();
-  if (date.getTime() >= tomorrow.getTime() && date.getTime() < tomorrow.getTime() + 86400000) return `Morgen · ${value}`.trim();
-  return `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}. · ${value}`.trim();
+  const withTime = (label) => time ? `${label} · ${time}` : label;
+  if (date.getTime() >= today.getTime() && date.getTime() < tomorrow.getTime()) return withTime('Heute');
+  if (date.getTime() >= tomorrow.getTime() && date.getTime() < tomorrow.getTime() + 86400000) return withTime('Morgen');
+  const dateLabel = `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}.`;
+  return withTime(dateLabel);
 };
 
 const readStorageJSON = (key, fallback) => {
@@ -3915,7 +3916,7 @@ export default function App() {
 
     const packages = readStorageJSON('family_app_packages', INITIAL_PACKAGES);
     const unterwegsCount = Array.isArray(packages?.unterwegs) ? packages.unterwegs.length : 0;
-    const packagesSubtitle = `${unterwegsCount} ${unterwegsCount === 1 ? 'unterwegs' : 'unterwegs'}`;
+    const packagesSubtitle = `${unterwegsCount} unterwegs`;
 
     const packingLists = readStorageJSON('family_app_packing_lists', INITIAL_PACKING_LISTS);
     const packingSubtitle = packingLists.length > 0
