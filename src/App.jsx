@@ -1126,13 +1126,43 @@ const INTERVAL_LABELS = {
 
 const INTERVAL_MONTHS = { monthly: 1, quarterly: 3, semiannual: 6, yearly: 12 };
 
-const ENTRY_TYPES = ['abo', 'rate', 'abbuchung', 'einkommen'];
-const ENTRY_TYPE_LABELS = { abo: 'Abo', rate: 'Ratenzahlung', abbuchung: 'Abbuchung', einkommen: 'Einkommen' };
+const ENTRY_TYPES = ['abo', 'rate', 'abbuchung', 'hausausgabe', 'einkommen'];
+const ENTRY_TYPE_LABELS = {
+  abo: 'Abo',
+  rate: 'Ratenzahlung',
+  abbuchung: 'Abbuchung',
+  hausausgabe: 'Hausausgabe',
+  einkommen: 'Einkommen',
+};
+
+const createInitialBudgetPerson = () => ({
+  income: [],
+  abos: [],
+  rates: [],
+  abbuchungen: [],
+  houseExpenses: [],
+  haushaltsBeitrag: 0,
+});
 
 const INITIAL_BUDGETS = {
-  sonja: { income: [], abos: [], rates: [], abbuchungen: [], haushaltsBeitrag: 0 },
-  michael: { income: [], abos: [], rates: [], abbuchungen: [], haushaltsBeitrag: 0 },
+  sonja: createInitialBudgetPerson(),
+  michael: createInitialBudgetPerson(),
 };
+
+const normalizeBudgetPerson = (budget = {}) => ({
+  ...createInitialBudgetPerson(),
+  ...budget,
+  income: Array.isArray(budget.income) ? budget.income : [],
+  abos: Array.isArray(budget.abos) ? budget.abos : [],
+  rates: Array.isArray(budget.rates) ? budget.rates : [],
+  abbuchungen: Array.isArray(budget.abbuchungen) ? budget.abbuchungen : [],
+  houseExpenses: Array.isArray(budget.houseExpenses) ? budget.houseExpenses : [],
+});
+
+const normalizeBudgets = (budgets = {}) => ({
+  sonja: normalizeBudgetPerson(budgets.sonja),
+  michael: normalizeBudgetPerson(budgets.michael),
+});
 
 const formatEur = (val) =>
   Number(val).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
@@ -1163,8 +1193,27 @@ const calcBudgetSummary = (budget) => {
     return s + calcMonthlyAmount(e.installment, e.interval);
   }, 0);
   const monthlyAbbuchungen = budget.abbuchungen.reduce((s, e) => s + calcMonthlyAmount(e.amount, e.interval), 0);
-  const monthlyExpenses = monthlyAbos + monthlyRates + monthlyAbbuchungen;
-  return { monthlyIncome, monthlyExpenses, monthlyBalance: monthlyIncome - monthlyExpenses };
+  const monthlyHouseExpenses = budget.houseExpenses.reduce((s, e) => s + calcMonthlyAmount(e.amount, e.interval), 0);
+  const monthlyExpenses = monthlyAbos + monthlyRates + monthlyAbbuchungen + monthlyHouseExpenses;
+  return {
+    monthlyIncome,
+    monthlyExpenses,
+    monthlyHouseExpenses,
+    monthlyBalance: monthlyIncome - monthlyExpenses,
+  };
+};
+
+const calcHouseholdSummary = (budgets) => {
+  const sonjaBeitrag = budgets.sonja.haushaltsBeitrag || 0;
+  const michaelBeitrag = budgets.michael.haushaltsBeitrag || 0;
+  const totalContributions = sonjaBeitrag + michaelBeitrag;
+  const totalHouseExpenses = calcBudgetSummary(budgets.sonja).monthlyHouseExpenses + calcBudgetSummary(budgets.michael).monthlyHouseExpenses;
+
+  return {
+    totalContributions,
+    totalHouseExpenses,
+    monthlyBalance: totalContributions - totalHouseExpenses,
+  };
 };
 
 const EMPTY_FORM = {
@@ -1289,6 +1338,7 @@ const BudgetPersonView = ({ person, budget, onUpdateBudget, onBack }) => {
     if (type === 'einkommen') return 'income';
     if (type === 'abo') return 'abos';
     if (type === 'rate') return 'rates';
+    if (type === 'hausausgabe') return 'houseExpenses';
     return 'abbuchungen';
   };
 
@@ -1324,6 +1374,7 @@ const BudgetPersonView = ({ person, budget, onUpdateBudget, onBack }) => {
     { label: 'Einkommen', key: 'income', type: 'einkommen', color: 'text-emerald-600' },
     { label: 'Abos', key: 'abos', type: 'abo', color: 'text-red-500' },
     { label: 'Ratenzahlungen', key: 'rates', type: 'rate', color: 'text-orange-500' },
+    { label: 'Hausausgaben', key: 'houseExpenses', type: 'hausausgabe', color: 'text-blue-600' },
     { label: 'Abbuchungen', key: 'abbuchungen', type: 'abbuchung', color: 'text-gray-600' },
   ];
 
@@ -1477,12 +1528,16 @@ const HaushaltView = ({ budgets, onBack }) => {
   const michaelSummary = calcBudgetSummary(budgets.michael);
   const sonjaBeitrag = budgets.sonja.haushaltsBeitrag || 0;
   const michaelBeitrag = budgets.michael.haushaltsBeitrag || 0;
-  const totalBeitrag = sonjaBeitrag + michaelBeitrag;
+  const householdSummary = calcHouseholdSummary(budgets);
   const combined = {
     monthlyIncome: sonjaSummary.monthlyIncome + michaelSummary.monthlyIncome,
     monthlyExpenses: sonjaSummary.monthlyExpenses + michaelSummary.monthlyExpenses,
     monthlyBalance: sonjaSummary.monthlyBalance + michaelSummary.monthlyBalance,
   };
+  const houseEntries = [
+    ...budgets.sonja.houseExpenses.map(e => ({ ...e, person: 'Sonja' })),
+    ...budgets.michael.houseExpenses.map(e => ({ ...e, person: 'Michael' })),
+  ];
 
   const allEntries = [
     ...budgets.sonja.income.map(e => ({ ...e, person: 'Sonja', category: 'Einkommen' })),
@@ -1491,6 +1546,8 @@ const HaushaltView = ({ budgets, onBack }) => {
     ...budgets.michael.abos.map(e => ({ ...e, person: 'Michael', category: 'Abo' })),
     ...budgets.sonja.rates.map(e => ({ ...e, person: 'Sonja', category: 'Rate' })),
     ...budgets.michael.rates.map(e => ({ ...e, person: 'Michael', category: 'Rate' })),
+    ...budgets.sonja.houseExpenses.map(e => ({ ...e, person: 'Sonja', category: 'Hausausgabe' })),
+    ...budgets.michael.houseExpenses.map(e => ({ ...e, person: 'Michael', category: 'Hausausgabe' })),
     ...budgets.sonja.abbuchungen.map(e => ({ ...e, person: 'Sonja', category: 'Abbuchung' })),
     ...budgets.michael.abbuchungen.map(e => ({ ...e, person: 'Michael', category: 'Abbuchung' })),
   ];
@@ -1500,30 +1557,29 @@ const HaushaltView = ({ budgets, onBack }) => {
       <Header title="Haushaltskonto" onBack={onBack} />
       <div className="px-4 pb-24 space-y-4">
         <div className="bg-gray-900 rounded-3xl p-5 text-white">
-          <div className="text-xs opacity-60 mb-3 uppercase tracking-widest">Monatliche Übersicht</div>
+          <div className="text-xs opacity-60 mb-3 uppercase tracking-widest">Haushaltskonto</div>
           <div className="grid grid-cols-3 gap-2 text-center">
             <div>
-              <div className="text-xs opacity-70">Einnahmen</div>
-              <div className="text-base font-semibold mt-0.5 text-emerald-400">{formatEur(combined.monthlyIncome)}</div>
+              <div className="text-xs opacity-70">Beiträge</div>
+              <div className="text-base font-semibold mt-0.5 text-emerald-400">{formatEur(householdSummary.totalContributions)}</div>
             </div>
             <div>
-              <div className="text-xs opacity-70">Ausgaben</div>
-              <div className="text-base font-semibold mt-0.5 text-red-400">-{formatEur(combined.monthlyExpenses)}</div>
+              <div className="text-xs opacity-70">Hausausgaben</div>
+              <div className="text-base font-semibold mt-0.5 text-red-400">-{formatEur(householdSummary.totalHouseExpenses)}</div>
             </div>
             <div>
               <div className="text-xs opacity-70">Saldo</div>
-              <div className={`text-base font-semibold mt-0.5 ${combined.monthlyBalance < 0 ? 'text-red-300' : 'text-emerald-300'}`}>
-                {combined.monthlyBalance >= 0 ? '' : '-'}{formatEur(Math.abs(combined.monthlyBalance))}
+              <div className={`text-base font-semibold mt-0.5 ${householdSummary.monthlyBalance < 0 ? 'text-red-300' : 'text-emerald-300'}`}>
+                {householdSummary.monthlyBalance >= 0 ? '' : '-'}{formatEur(Math.abs(householdSummary.monthlyBalance))}
               </div>
             </div>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-center text-white/60 border-t border-white/10 pt-3">
-            <div>Sonja: {formatEur(sonjaSummary.monthlyBalance)}/Mo</div>
-            <div>Michael: {formatEur(michaelSummary.monthlyBalance)}/Mo</div>
+            <div>Sonja: +{formatEur(sonjaBeitrag)} / -{formatEur(sonjaSummary.monthlyHouseExpenses)}</div>
+            <div>Michael: +{formatEur(michaelBeitrag)} / -{formatEur(michaelSummary.monthlyHouseExpenses)}</div>
           </div>
         </div>
 
-        {/* Beiträge zur Haushaltskasse */}
         <div className="bg-white rounded-3xl p-4 shadow-sm border border-gray-100">
           <h4 className="text-sm font-semibold mb-3 text-emerald-600">Beiträge zur Haushaltskasse</h4>
           <div className="space-y-2">
@@ -1541,8 +1597,54 @@ const HaushaltView = ({ budgets, onBack }) => {
             <div className="flex items-center justify-between py-2 px-3 rounded-2xl bg-emerald-50 border border-emerald-100">
               <span className="text-sm font-semibold text-gray-700">Gesamt</span>
               <span className="text-sm font-semibold text-emerald-600">
-                +{formatEur(totalBeitrag)}<span className="text-xs font-normal">/Mo</span>
+                +{formatEur(householdSummary.totalContributions)}<span className="text-xs font-normal">/Mo</span>
               </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-3xl p-4 shadow-sm border border-gray-100">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <h4 className="text-sm font-semibold text-blue-600">Hausausgaben</h4>
+            <span className="text-sm font-semibold text-blue-600">
+              -{formatEur(householdSummary.totalHouseExpenses)}<span className="text-xs font-normal">/Mo</span>
+            </span>
+          </div>
+          {houseEntries.length === 0 ? (
+            <p className="text-xs text-gray-400 italic">Noch keine Hausausgaben vorhanden.</p>
+          ) : (
+            <div className="space-y-2">
+              {houseEntries.map(entry => (
+                <div key={entry.id} className="flex items-center justify-between gap-2 py-2 px-3 rounded-2xl bg-blue-50">
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm font-medium text-gray-800 truncate block">{entry.title}</span>
+                    <span className="text-xs text-gray-500">{entry.person} · {INTERVAL_LABELS[entry.interval] || ''}</span>
+                  </div>
+                  <div className="text-sm font-semibold text-blue-600">
+                    -{formatEur(calcMonthlyAmount(entry.amount, entry.interval))}<span className="text-xs font-normal">/Mo</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-3xl p-4 shadow-sm border border-gray-100">
+          <h4 className="text-sm font-semibold mb-3 text-gray-600">Gesamte Finanzen</h4>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div>
+              <div className="text-xs text-gray-400">Einnahmen</div>
+              <div className="text-sm font-semibold text-emerald-600 mt-1">{formatEur(combined.monthlyIncome)}</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-400">Ausgaben</div>
+              <div className="text-sm font-semibold text-red-500 mt-1">-{formatEur(combined.monthlyExpenses)}</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-400">Saldo</div>
+              <div className={`text-sm font-semibold mt-1 ${combined.monthlyBalance < 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                {combined.monthlyBalance >= 0 ? '' : '-'}{formatEur(Math.abs(combined.monthlyBalance))}
+              </div>
             </div>
           </div>
         </div>
@@ -1583,7 +1685,7 @@ const FinanceView = ({ onBack }) => {
   const [budgets, setBudgets] = useState(() => {
     try {
       const saved = localStorage.getItem('family_app_budgets');
-      return saved ? JSON.parse(saved) : INITIAL_BUDGETS;
+      return saved ? normalizeBudgets(JSON.parse(saved)) : INITIAL_BUDGETS;
     } catch {
       return INITIAL_BUDGETS;
     }
@@ -1611,7 +1713,7 @@ const FinanceView = ({ onBack }) => {
 
   const sonjaSummary = calcBudgetSummary(budgets.sonja);
   const michaelSummary = calcBudgetSummary(budgets.michael);
-  const combinedBalance = sonjaSummary.monthlyBalance + michaelSummary.monthlyBalance;
+  const householdSummary = calcHouseholdSummary(budgets);
 
   return (
     <div className="animate-fade-in min-h-screen bg-gray-50">
@@ -1624,9 +1726,9 @@ const FinanceView = ({ onBack }) => {
         >
           <div className="text-xs opacity-80 uppercase tracking-widest mb-1">Haushaltskonto</div>
           <div className="text-3xl font-semibold">
-            {combinedBalance >= 0 ? '' : '-'}{formatEur(Math.abs(combinedBalance))}<span className="text-base font-normal opacity-70">/Mo</span>
+            {householdSummary.monthlyBalance >= 0 ? '' : '-'}{formatEur(Math.abs(householdSummary.monthlyBalance))}<span className="text-base font-normal opacity-70">/Mo</span>
           </div>
-          <div className="text-xs opacity-70 mt-1">Saldo pro Monat · Tippen für Details →</div>
+          <div className="text-xs opacity-70 mt-1">Beiträge minus Hausausgaben · Tippen für Details →</div>
         </div>
 
         {/* Person budgets */}
